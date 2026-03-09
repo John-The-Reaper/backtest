@@ -1,0 +1,6 @@
+# Ignorer les dossiers de compilation Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+

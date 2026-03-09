@@ -1,0 +1,51 @@
+import pandas as pd
+
+
+class CorrelationStrategy:
+    """
+    Strategie basee sur correlation roulante vs symbole de reference.
+    Quand correlation casse bas, on entre; quand elle remonte, on sort.
+    """
+
+    def __init__(self, reference_symbol="BTC/USDT"):
+        self.name = "CorrelationStrategy"
+        self.reference_symbol = reference_symbol
+
+    def prepare_data(self, data_dict, symbol):
+        asset_name = symbol.split("/")[0]
+
+        ref_symbol = self.reference_symbol
+        if ref_symbol == symbol:
+            ref_symbol = "ETH/USDT" if "ETH/USDT" in data_dict else None
+        if ref_symbol is None or ref_symbol not in data_dict:
+            raise ValueError(f"Reference symbol indisponible pour {symbol}: {self.reference_symbol}")
+
+        ref_name = ref_symbol.split("/")[0]
+
+        data = pd.DataFrame(
+            {
+                asset_name: data_dict[symbol]["close"].astype(float),
+                ref_name: data_dict[ref_symbol]["close"].astype(float),
+            }
+        )
+        data = data.dropna().sort_index()
+        return data, asset_name
+
+    def generate_signals(self, data, asset_name, params):
+        data = data.copy()
+
+        window = int(params.get("window", 48))
+        enter = float(params.get("enter", 0.2))
+        exit_level = float(params.get("exit", 0.8))
+
+        ref_col = [c for c in data.columns if c != asset_name][0]
+        data["Correlation"] = data[asset_name].rolling(window).corr(data[ref_col])
+        data = data.ffill().bfill()
+
+        entries = data["Correlation"] < enter
+        exits = data["Correlation"] >= exit_level
+
+        entries_df = pd.DataFrame({asset_name: entries.fillna(False)}, index=data.index)
+        exits_df = pd.DataFrame({asset_name: exits.fillna(False)}, index=data.index)
+
+        return data, entries_df, exits_df
