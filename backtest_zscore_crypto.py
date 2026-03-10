@@ -69,7 +69,7 @@ class ZScoreStrategy:
         data["Std"] = data[asset_name].rolling(window=params["window"]).std(ddof=0)
         data["Std"] = data["Std"].replace(0.0, np.nan)
         data["Z-Score"] = (data[asset_name] - data["Mean"]) / data["Std"]
-        data = data.ffill().bfill()
+        data = data.dropna()
 
         z_entry = float(params.get("z_score_entry", 2.0))
         z_exit = float(params.get("z_score_exit", 0.0))
@@ -107,9 +107,15 @@ if __name__ == "__main__":
         reload=True,
     )
 
-    simulator.visualize_results(portfolios_data, SYMBOLS)
+    summary_path = os.path.join(config.BACKTEST_DIR, "backtest_zscore_summary.json")
     simulator.export_results_to_json(
         portfolios_data,
         SYMBOLS,
-        output_path=os.path.join(config.BACKTEST_DIR, "backtest_zscore_summary.json"),
+        output_path=summary_path,
     )
+
+    # Lancer l'analyse et generer le rapport
+    from backtest_analysis import BacktestAnalyzer
+
+    analyzer = BacktestAnalyzer(summary_path=summary_path)
+    analyzer.run()

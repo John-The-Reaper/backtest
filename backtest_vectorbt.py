@@ -4,7 +4,6 @@ import json
 import os
 from typing import Dict, List, Tuple
 
-import matplotlib.pyplot as plt
 import pandas as pd
 import vectorbt as vbt
 
@@ -126,116 +125,25 @@ class TradingSimulator:
 
         return results, portfolios_data
 
-    def visualize_results(self, portfolios_data, symbols, capital_initial=None):
-        if capital_initial is None:
-            capital_initial = self.config.default_params.get("capital_initial", 10_000.0)
-
-        rows = []
-        for symbol in symbols:
-            if symbol not in portfolios_data:
-                continue
-            perf = portfolios_data[symbol]
-            rows.append(
-                {
-                    "Symbol": symbol,
-                    "Final Value": perf["final_value"],
-                    "Total Profit": perf["total_profit"],
-                    "Return (%)": perf["total_return"] * 100.0,
-                    "Annualized Return (%)": perf["annualized_return"] * 100.0,
-                    "Sharpe Ratio": perf["sharpe_ratio"],
-                    "Max Drawdown (%)": perf["max_drawdown"] * 100.0,
-                    "Win Rate (%)": perf["win_rate"] * 100.0,
-                    "Trade Count": perf["trade_count"],
-                }
-            )
-
-        if not rows:
-            print("Aucun resultat a visualiser")
-            return {}
-
-        perf_df = pd.DataFrame(rows).sort_values("Return (%)", ascending=False).reset_index(drop=True)
-        print("\n=== TABLEAU DES PERFORMANCES ===")
-        print(perf_df.to_string(index=False))
-
-        total_initial_capital = capital_initial * len(perf_df)
-        total_profit = perf_df["Total Profit"].sum()
-        total_final_value = total_initial_capital + total_profit
-        total_return = (total_final_value / total_initial_capital - 1.0) if total_initial_capital > 0 else 0.0
-
-        print("\n=== PERFORMANCE GLOBALE ===")
-        print(f"Capital initial total: {total_initial_capital:.2f}")
-        print(f"Valeur finale totale: {total_final_value:.2f}")
-        print(f"Profit total: {total_profit:.2f}")
-        print(f"Rendement total: {total_return:.2%}")
-
-        # Courbes d'equite
-        all_idx = pd.DatetimeIndex([])
-        for symbol in symbols:
-            if symbol in portfolios_data:
-                all_idx = all_idx.union(portfolios_data[symbol]["equity_curve"].index)
-        all_idx = all_idx.sort_values()
-
-        eq_df = pd.DataFrame(index=all_idx)
-        for symbol in symbols:
-            if symbol in portfolios_data:
-                eq = portfolios_data[symbol]["equity_curve"].reindex(all_idx).ffill().bfill()
-                eq_df[symbol] = eq
-
-        if not eq_df.empty:
-            plt.figure(figsize=(14, 7))
-            for col in eq_df.columns:
-                normalized = eq_df[col] / eq_df[col].iloc[0] - 1.0
-                plt.plot(normalized.index, normalized.values, label=col, linewidth=1.1)
-            plt.title("Equity Curves Individuelles")
-            plt.xlabel("Date")
-            plt.ylabel("Performance cumulee")
-            plt.grid(alpha=0.3)
-            plt.legend(loc="upper left", fontsize=8)
-            plt.tight_layout()
-            plt.savefig(os.path.join(self.backtest_dir, "equity_curves_individual.png"), dpi=140)
-            plt.close()
-
-            global_eq = eq_df.sum(axis=1)
-            global_norm = global_eq / global_eq.iloc[0] - 1.0
-            plt.figure(figsize=(14, 6))
-            plt.plot(global_norm.index, global_norm.values, color="black", linewidth=1.4)
-            plt.title("Equity Curve Globale")
-            plt.xlabel("Date")
-            plt.ylabel("Performance cumulee")
-            plt.grid(alpha=0.3)
-            plt.tight_layout()
-            plt.savefig(os.path.join(self.backtest_dir, "equity_curve_global.png"), dpi=140)
-            plt.close()
-
-            running_max = global_eq.cummax()
-            dd = global_eq / running_max - 1.0
-            plt.figure(figsize=(14, 5))
-            plt.fill_between(dd.index, dd.values, 0, color="crimson", alpha=0.35)
-            plt.title("Drawdown Global")
-            plt.xlabel("Date")
-            plt.ylabel("Drawdown")
-            plt.grid(alpha=0.3)
-            plt.tight_layout()
-            plt.savefig(os.path.join(self.backtest_dir, "drawdown_global.png"), dpi=140)
-            plt.close()
-
-        return {
-            "total_initial_capital": float(total_initial_capital),
-            "total_final_value": float(total_final_value),
-            "total_profit": float(total_profit),
-            "total_return": float(total_return),
-            "performance_df": perf_df,
-        }
-
     def export_results_to_json(self, portfolios_data, symbols, output_path="backtests/results.json"):
         rows = []
+        equity_curves = {}
+
         for symbol in symbols:
             if symbol not in portfolios_data:
                 continue
             perf = portfolios_data[symbol]
+            eq = perf.get("equity_curve")
+            start = str(eq.index[0]) if eq is not None and len(eq) > 0 else ""
+            end = str(eq.index[-1]) if eq is not None and len(eq) > 0 else ""
+            nb_rows = len(eq) if eq is not None else 0
+
             rows.append(
                 {
                     "symbol": symbol,
+                    "rows": nb_rows,
+                    "start": start,
+                    "end": end,
                     "final_value": perf["final_value"],
                     "total_profit": perf["total_profit"],
                     "total_return": perf["total_return"],
@@ -247,9 +155,19 @@ class TradingSimulator:
                     "portfolio_path": perf["portfolio_path"],
                 }
             )
+            if eq is not None:
+                equity_curves[symbol] = eq
 
         payload = {"results": rows}
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
+
+        # Sauvegarde des equity curves en CSV pour l'analyse
+        if equity_curves:
+            eq_df = pd.DataFrame(equity_curves)
+            eq_path = output_path.replace(".json", "_equity_curves.csv")
+            eq_df.to_csv(eq_path)
+
+        print(f"Resultats exportes: {output_path}")
         print(f"Resultats exportes: {output_path}")
