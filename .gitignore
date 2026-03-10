@@ -1,5 +1,7 @@
 # Ignorer les dossiers de compilation Python
 __pycache__/
+backtests/
+data_repo/
 *.py[cod]
 *$py.class
 

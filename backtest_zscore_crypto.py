@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 
+from backtest_analysis import BacktestAnalyzer
 from data_manager import DataManager
 from backtest_vectorbt import TradingSimulator
 
@@ -113,9 +114,6 @@ if __name__ == "__main__":
         SYMBOLS,
         output_path=summary_path,
     )
-
-    # Lancer l'analyse et generer le rapport
-    from backtest_analysis import BacktestAnalyzer
 
     analyzer = BacktestAnalyzer(summary_path=summary_path)
     analyzer.run()
