@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import os
 import re
 import time
@@ -73,6 +72,11 @@ class DataManager:
         safe_symbol = self._sanitize_symbol(symbol)
         safe_tf = timeframe.replace("/", "_")
         return os.path.join(self.cache_dir, f"{safe_symbol}_{safe_tf}_cache.feather")
+
+    def _data_file_path(self, symbol: str, timeframe: str) -> str:
+        safe_symbol = self._sanitize_symbol(symbol)
+        safe_tf = timeframe.replace("/", "_")
+        return os.path.join(self.data_dir, f"{safe_symbol}_{safe_tf}_data.feather")
 
     def _load_markets(self) -> Dict:
         if self._markets is None:
@@ -165,6 +169,34 @@ class DataManager:
         out = df[["timestamp", "open", "high", "low", "close", "volume"]].copy()
         out = out.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
         feather.write_feather(out, path)
+
+    @staticmethod
+    def _normalize_ohlcv_dataframe(df: pd.DataFrame, source: str) -> pd.DataFrame:
+        if df.empty:
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+        if "timestamp" in df.columns:
+            ts = df["timestamp"]
+            if pd.api.types.is_numeric_dtype(ts):
+                df["timestamp"] = pd.to_datetime(ts.astype("int64"), unit="ms", utc=True)
+            else:
+                df["timestamp"] = pd.to_datetime(ts, utc=True)
+            df = df.set_index("timestamp")
+        elif not isinstance(df.index, pd.DatetimeIndex):
+            raise ValueError(f"Impossible de trouver un timestamp exploitable dans {source}")
+
+        df.index = pd.to_datetime(df.index, utc=True)
+        df.index.name = "timestamp"
+
+        required_columns = ["open", "high", "low", "close", "volume"]
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Colonnes OHLCV manquantes dans {source}: {missing_columns}")
+
+        out = df[required_columns].copy()
+        out = out.sort_index()
+        out = out[~out.index.duplicated(keep="last")]
+        return out
 
     @staticmethod
     def _to_timestamp_ms(value: Union[str, int, float, datetime]) -> int:
@@ -281,6 +313,67 @@ class DataManager:
         window_df = window_df.set_index("timestamp")
         return window_df
 
+    def load_symbol_from_feather(
+        self,
+        symbol: str,
+        timeframe: str,
+        start: Optional[Union[str, int, float, datetime]] = None,
+        end: Optional[Union[str, int, float, datetime]] = None,
+        file_path: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """
+        Charge un symbole depuis un fichier Feather existant.
+
+        Si `file_path` est omis, on cherche `data/<symbol>_<timeframe>_data.feather`.
+        """
+        path = file_path or self._data_file_path(symbol, timeframe)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Fichier Feather introuvable: {path}")
+
+        df = feather.read_feather(path)
+        df = self._normalize_ohlcv_dataframe(df, path)
+
+        if start is not None:
+            start_dt = pd.to_datetime(self._to_timestamp_ms(start), unit="ms", utc=True)
+            df = df[df.index >= start_dt]
+        if end is not None:
+            end_dt = pd.to_datetime(self._to_timestamp_ms(end), unit="ms", utc=True)
+            df = df[df.index <= end_dt]
+
+        if df.empty:
+            raise ValueError(f"Aucune donnee exploitable dans {path} pour la plage demandee")
+
+        return df
+
+    def load_or_fetch_symbol_range(
+        self,
+        symbol: str,
+        timeframe: str,
+        start: Union[str, int, float, datetime],
+        end: Union[str, int, float, datetime],
+        file_path: Optional[str] = None,
+        prefer_file: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Charge un Feather local si disponible, sinon telecharge via l'exchange.
+        """
+        candidate_path = file_path or self._data_file_path(symbol, timeframe)
+        if prefer_file and os.path.exists(candidate_path):
+            return self.load_symbol_from_feather(
+                symbol=symbol,
+                timeframe=timeframe,
+                start=start,
+                end=end,
+                file_path=candidate_path,
+            )
+
+        return self.fetch_symbol_range(
+            symbol=symbol,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+        )
+
     def download_period(
         self,
         symbols: List[str],
@@ -371,40 +464,55 @@ class DataManager:
 
         return {s: results[s] for s in symbols if s in results}
 
+    def load_or_download_range(
+        self,
+        symbols: List[str],
+        timeframe: str,
+        start: Union[str, int, float, datetime],
+        end: Union[str, int, float, datetime],
+        max_workers: int = 1,
+        prefer_file: bool = True,
+        file_map: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Charge les donnees depuis des fichiers Feather existants quand ils sont presents,
+        sinon telecharge via l'exchange.
 
-# -----------------------------------------------------------------------------
-# CLI minimal
-# -----------------------------------------------------------------------------
+        `file_map` permet de donner un chemin `.feather` explicite par symbole.
+        """
+        file_map = file_map or {}
 
-def _parse_symbols(raw: str) -> List[str]:
-    symbols = [s.strip().upper() for s in raw.split(",") if s.strip()]
-    if not symbols:
-        raise ValueError("Aucun symbole fourni.")
-    return symbols
+        if max_workers <= 1:
+            data: Dict[str, pd.DataFrame] = {}
+            for symbol in symbols:
+                data[symbol] = self.load_or_fetch_symbol_range(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    start=start,
+                    end=end,
+                    file_path=file_map.get(symbol),
+                    prefer_file=prefer_file,
+                )
+            return data
 
+        results: Dict[str, pd.DataFrame] = {}
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Telechargement donnees crypto (ccxt)")
-    parser.add_argument("--symbols", required=True, help="Ex: BTC/USDT,ETH/USDT,SOL/USDT")
-    parser.add_argument("--timeframe", default="1h", help="Ex: 5m, 1h, 4h, 1d")
-    parser.add_argument("--duration", default="1mois", help="Ex: 1mois, 3mois, 14j, 2w")
-    parser.add_argument("--exchange", default="binance", help="Exchange ccxt")
-    parser.add_argument("--data-dir", default="data", help="Repertoire de cache")
-    parser.add_argument("--workers", type=int, default=1, help="Nb workers pour multi-symboles")
-    args = parser.parse_args()
+        def _worker(sym: str):
+            return sym, self.load_or_fetch_symbol_range(
+                symbol=sym,
+                timeframe=timeframe,
+                start=start,
+                end=end,
+                file_path=file_map.get(sym),
+                prefer_file=prefer_file,
+            )
 
-    manager = DataManager(exchange_name=args.exchange, data_dir=args.data_dir)
-    symbols = _parse_symbols(args.symbols)
-    data = manager.download_period(
-        symbols=symbols,
-        timeframe=args.timeframe,
-        duration=args.duration,
-        max_workers=max(1, args.workers),
-    )
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = [ex.submit(_worker, s) for s in symbols]
+            for fut in as_completed(futures):
+                sym, df = fut.result()
+                results[sym] = df
 
-    for symbol, df in data.items():
-        print(f"{symbol}: {len(df)} lignes | {df.index.min()} -> {df.index.max()}")
+        return {s: results[s] for s in symbols if s in results}
 
-
-if __name__ == "__main__":
-    main()
+        

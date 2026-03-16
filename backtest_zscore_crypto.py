@@ -32,6 +32,9 @@ class Config:
     def __init__(self):
         self.DATA_DIR = "data"
         self.BACKTEST_DIR = "backtests"
+        self.PORTFOLIO_DIR = os.path.join(self.BACKTEST_DIR, "portfolios")
+        self.RESULTS_DIR = os.path.join(self.BACKTEST_DIR, "results")
+        self.GRAPHS_DIR = os.path.join(self.RESULTS_DIR, "graphs")
         self.nb_workers = 8
 
         self.default_params = {
@@ -40,12 +43,15 @@ class Config:
             "window": 12,
             "capital_initial": 100.0,
             "timeframe": TIMEFRAME,
-            "fees": 0.001,
+            "fees": 0.000,
             "slippage_base": 0.0005,
         }
 
         os.makedirs(self.DATA_DIR, exist_ok=True)
         os.makedirs(self.BACKTEST_DIR, exist_ok=True)
+        os.makedirs(self.PORTFOLIO_DIR, exist_ok=True)
+        os.makedirs(self.RESULTS_DIR, exist_ok=True)
+        os.makedirs(self.GRAPHS_DIR, exist_ok=True)
 
 
 # ==================== STRATEGIE ====================
@@ -108,12 +114,17 @@ if __name__ == "__main__":
         reload=True,
     )
 
-    summary_path = os.path.join(config.BACKTEST_DIR, "backtest_zscore_summary.json")
+    summary_path = os.path.join(config.RESULTS_DIR, "backtest_zscore_summary.json")
     simulator.export_results_to_json(
         portfolios_data,
         SYMBOLS,
         output_path=summary_path,
     )
 
-    analyzer = BacktestAnalyzer(summary_path=summary_path)
+    analyzer = BacktestAnalyzer(
+        summary_path=summary_path,
+        graphs_dir=config.GRAPHS_DIR,
+        out_csv=os.path.join(config.RESULTS_DIR, "backtest_analysis.csv"),
+        out_json=os.path.join(config.RESULTS_DIR, "backtest_analysis_global.json"),
+    )
     analyzer.run()

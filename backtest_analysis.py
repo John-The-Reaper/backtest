@@ -15,10 +15,10 @@ class BacktestAnalyzer:
 
     def __init__(
         self,
-        summary_path: str = "backtests/backtest_zscore_summary.json",
-        graphs_dir: str = "backtests/graphs",
-        out_csv: str = "backtests/backtest_analysis.csv",
-        out_json: str = "backtests/backtest_analysis_global.json",
+        summary_path: str = os.path.join("backtests", "results", "backtest_zscore_summary.json"),
+        graphs_dir: str = os.path.join("backtests", "results", "graphs"),
+        out_csv: str = os.path.join("backtests", "results", "backtest_analysis.csv"),
+        out_json: str = os.path.join("backtests", "results", "backtest_analysis_global.json"),
     ) -> None:
         self.summary_path = summary_path
         self.graphs_dir = graphs_dir
@@ -95,6 +95,8 @@ class BacktestAnalyzer:
         df["annualized_pct"] = df["annualized_return"] * 100.0
         df["max_dd_pct"] = df["max_drawdown"] * 100.0
         df["win_rate_pct"] = df["win_rate"] * 100.0
+        if "beta_underlying" not in df.columns:
+            df["beta_underlying"] = 0.0
 
         # Ratio rendement / risque
         df["reward_risk"] = np.where(
@@ -139,6 +141,9 @@ class BacktestAnalyzer:
             "sharpe_moyen": round(df["sharpe_ratio"].mean(), 3),
             "sharpe_median": round(df["sharpe_ratio"].median(), 3),
             "sharpe_std": round(df["sharpe_ratio"].std(), 3),
+            "beta_moyen": round(df["beta_underlying"].mean(), 3),
+            "beta_median": round(df["beta_underlying"].median(), 3),
+            "beta_std": round(df["beta_underlying"].std(), 3),
             # Drawdown
             "max_dd_moyen_pct": round(df["max_drawdown"].mean() * 100, 2),
             "max_dd_pire_pct": round(df["max_drawdown"].min() * 100, 2),
@@ -296,8 +301,8 @@ class BacktestAnalyzer:
 
     def _plot_heatmap_metrics(self, df: pd.DataFrame) -> None:
         """Heatmap des metriques cles par asset."""
-        cols = ["return_pct", "annualized_pct", "sharpe_ratio", "max_dd_pct", "win_rate_pct"]
-        labels = ["Return %", "Ann. Return %", "Sharpe", "Max DD %", "Win Rate %"]
+        cols = ["return_pct", "annualized_pct", "sharpe_ratio", "beta_underlying", "max_dd_pct", "win_rate_pct"]
+        labels = ["Return %", "Ann. Return %", "Sharpe", "Beta", "Max DD %", "Win Rate %"]
         hm_df = df.set_index("symbol")[cols].copy()
         hm_df.columns = labels
 
@@ -336,20 +341,21 @@ class BacktestAnalyzer:
         # Tableau par asset
         display_cols = [
             "symbol", "return_pct", "annualized_pct", "sharpe_ratio",
-            "max_dd_pct", "win_rate_pct", "trade_count", "final_value",
+            "beta_underlying", "max_dd_pct", "win_rate_pct", "trade_count", "final_value",
         ]
         display_names = {
             "symbol": "Symbol",
             "return_pct": "Return %",
             "annualized_pct": "Ann. Ret %",
             "sharpe_ratio": "Sharpe",
+            "beta_underlying": "Beta",
             "max_dd_pct": "Max DD %",
             "win_rate_pct": "Win Rate %",
             "trade_count": "Trades",
             "final_value": "Final Value",
         }
         table = df[display_cols].rename(columns=display_names).copy()
-        for col in ["Return %", "Ann. Ret %", "Sharpe", "Max DD %", "Win Rate %", "Final Value"]:
+        for col in ["Return %", "Ann. Ret %", "Sharpe", "Beta", "Max DD %", "Win Rate %", "Final Value"]:
             if col in table.columns:
                 table[col] = table[col].apply(lambda x: f"{x:.2f}")
         table["Trades"] = table["Trades"].astype(int)
@@ -374,6 +380,10 @@ class BacktestAnalyzer:
         print(f"  Sharpe moyen               : {stats['sharpe_moyen']:.3f}")
         print(f"  Sharpe median              : {stats['sharpe_median']:.3f}")
         print(f"  Sharpe ecart-type          : {stats['sharpe_std']:.3f}")
+        print()
+        print(f"  Beta moyen                 : {stats['beta_moyen']:.3f}")
+        print(f"  Beta median                : {stats['beta_median']:.3f}")
+        print(f"  Beta ecart-type            : {stats['beta_std']:.3f}")
         print()
         print(f"  Max Drawdown moyen         : {stats['max_dd_moyen_pct']:.2f}%")
         print(f"  Max Drawdown pire          : {stats['max_dd_pire_pct']:.2f}%")
@@ -459,13 +469,13 @@ class BacktestAnalyzer:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rapport d'analyse complet des backtests")
-    parser.add_argument("--summary", default="backtests/backtest_zscore_summary.json",
+    parser.add_argument("--summary", default=os.path.join("backtests", "results", "backtest_zscore_summary.json"),
                         help="Chemin du fichier JSON de resultats")
-    parser.add_argument("--graphs-dir", default="backtests/graphs",
+    parser.add_argument("--graphs-dir", default=os.path.join("backtests", "results", "graphs"),
                         help="Dossier de sortie des graphiques")
-    parser.add_argument("--out-csv", default="backtests/backtest_analysis.csv",
+    parser.add_argument("--out-csv", default=os.path.join("backtests", "results", "backtest_analysis.csv"),
                         help="Chemin du CSV de sortie")
-    parser.add_argument("--out-json", default="backtests/backtest_analysis_global.json",
+    parser.add_argument("--out-json", default=os.path.join("backtests", "results", "backtest_analysis_global.json"),
                         help="Chemin du JSON de stats globales")
     args = parser.parse_args()
 
