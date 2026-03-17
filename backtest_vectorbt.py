@@ -7,6 +7,7 @@ import concurrent.futures
 
 import pandas as pd
 import vectorbt as vbt
+from time import perf_counter
 
 
 class TradingSimulator:
@@ -139,10 +140,11 @@ class TradingSimulator:
     def run_batch_simulations(self, symbols, data_dict, params=None, reload=False):
         if params is None:
             params = self.config.default_params
+        start = perf_counter()
         print("Avant")
         results = {}
         portfolios_data = {}
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=18) as executor:
             futures = {
                 executor.submit(self.run_simulation, symbol=symbol, data_dict=data_dict, params=params, reload=reload): symbol
                 for symbol in symbols
@@ -157,6 +159,7 @@ class TradingSimulator:
                     print(f"Erreur lors de la simulation pour {symbol}: {e}")
 
         print("Après")
+        print(perf_counter() - start)
 
         return results, portfolios_data
 

@@ -96,7 +96,7 @@ if __name__ == "__main__":
     config = Config()
 
     data_manager = DataManager(exchange_name=EXCHANGE, data_dir=config.DATA_DIR)
-    data_dict = data_manager.download_range(
+    data_dict = data_manager.load_or_download_range(
         symbols=SYMBOLS,
         timeframe=TIMEFRAME,
         start=START_DATE,
@@ -107,7 +107,6 @@ if __name__ == "__main__":
     strategy = ZScoreStrategy()
     simulator = TradingSimulator(strategy=strategy, config=config)
 
-    # reload=True => recalcule et remplace les portefeuilles existants
     results_dict, portfolios_data = simulator.run_batch_simulations(
         symbols=SYMBOLS,
         data_dict=data_dict,
