@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>backtest-lib — Documentation</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222639;
+      --border: #2e3250;
+      --accent: #5b8af5;
+      --accent2: #7dd3b0;
+      --warn: #f5c842;
+      --danger: #e06c75;
+      --text: #cdd6f4;
+      --text-muted: #6c7086;
+      --text-dim: #9399b2;
+      --code-bg: #181825;
+      --radius: 8px;
+      --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      display: flex;
+    }
+
+    /* ── Sidebar ── */
+    nav {
+      width: 260px;
+      min-height: 100vh;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 28px 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    nav .logo {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--accent);
+      padding: 0 20px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+      font-family: var(--font-mono);
+    }
+
+    nav .logo span { color: var(--text-muted); font-weight: 400; font-size: 12px; display: block; margin-top: 2px; }
+
+    nav .nav-section {
+      padding: 4px 20px 2px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-top: 12px;
+    }
+
+    nav a {
+      display: block;
+      padding: 5px 20px 5px 28px;
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 13.5px;
+      border-left: 2px solid transparent;
+      transition: all 0.15s;
+    }
+
+    nav a:hover {
+      color: var(--text);
+      background: var(--surface2);
+      border-left-color: var(--accent);
+    }
+
+    nav a.method {
+      padding-left: 40px;
+      font-size: 12.5px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    nav a.method:hover { color: var(--accent2); }
+
+    /* ── Main ── */
+    main {
+      flex: 1;
+      padding: 48px 56px;
+      max-width: 960px;
+    }
+
+    h1 {
+      font-size: 30px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    h1 .version {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      margin-left: 10px;
+    }
+
+    .subtitle {
+      color: var(--text-dim);
+      font-size: 15px;
+      margin-bottom: 36px;
+    }
+
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin: 48px 0 20px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 28px 0 10px;
+    }
+
+    h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dim);
+      margin: 20px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    p { margin-bottom: 12px; color: var(--text-dim); }
+
+    /* ── Class blocks ── */
+    .class-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      margin-bottom: 36px;
+    }
+
+    .class-title {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent2);
+      margin-bottom: 6px;
+    }
+
+    .class-import {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      background: var(--code-bg);
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+
+    .class-desc { color: var(--text-dim); font-size: 14px; }
+
+    /* ── Method cards ── */
+    .method-card {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin: 18px 0;
+      overflow: hidden;
+    }
+
+    .method-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    .method-sig {
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .method-sig .fn-name { color: var(--accent); font-weight: 700; }
+    .method-sig .param-name { color: var(--accent2); }
+    .method-sig .param-type { color: var(--warn); font-size: 12px; }
+    .method-sig .param-default { color: var(--text-muted); font-size: 12px; }
+
+    .method-body { padding: 14px 18px; }
+
+    .method-desc { color: var(--text-dim); font-size: 13.5px; margin-bottom: 14px; }
+
+    /* ── Param table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    th {
+      text-align: left;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #1e2133;
+      vertical-align: top;
+      line-height: 1.5;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    td:first-child {
+      font-family: var(--font-mono);
+      color: var(--accent2);
+      font-size: 12.5px;
+      white-space: nowrap;
+    }
+
+    td:nth-child(2) {
+      font-family: var(--font-mono);
+      color: var(--warn);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    td:nth-child(3) { color: var(--text-dim); }
+    td:nth-child(4) {
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .required {
+      font-size: 10px;
+      background: #3d2a2a;
+      color: var(--danger);
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
+    .optional {
+      font-size: 10px;
+      background: #1e2d24;
+      color: var(--accent2);
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
+    /* ── Code blocks ── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    p code, li code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 12.5px;
+      color: var(--accent2);
+    }
+
+    /* ── Syntax highlighting ── */
+    .kw { color: #c792ea; }
+    .fn { color: #82aaff; }
+    .str { color: #c3e88d; }
+    .cm { color: #546e7a; font-style: italic; }
+    .nb { color: #f78c6c; }
+    .cls { color: #ffcb6b; }
+    .op { color: var(--text-muted); }
+
+    /* ── Notes / alerts ── */
+    .note, .warn-box, .tip {
+      border-left: 3px solid;
+      padding: 10px 16px;
+      border-radius: 0 var(--radius) var(--radius) 0;
+      margin: 14px 0;
+      font-size: 13.5px;
+    }
+
+    .note { border-color: var(--accent); background: #1a2040; color: var(--text-dim); }
+    .warn-box { border-color: var(--warn); background: #2a2210; color: #d4b84a; }
+    .tip { border-color: var(--accent2); background: #152a22; color: #7dd3b0; }
+
+    .note strong, .warn-box strong, .tip strong { display: block; margin-bottom: 4px; }
+
+    /* ── Returns ── */
+    .returns {
+      background: #151a2e;
+      border: 1px solid #2a3060;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .returns-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .returns code { color: var(--warn); }
+
+    /* ── Tags ── */
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 12px;
+      font-weight: 600;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    .tag-static { background: #2a1e40; color: #c792ea; }
+    .tag-async { background: #1a2e2a; color: var(--accent2); }
+
+    /* ── Duration table ── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 12px 0;
+    }
+
+    .grid-item {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+    }
+
+    .grid-item .grid-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .grid-item code { display: block; margin: 2px 0; background: none; border: none; padding: 0; }
+
+    ul, ol { padding-left: 20px; margin-bottom: 12px; color: var(--text-dim); font-size: 14px; }
+    li { margin-bottom: 4px; }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+    .df-schema {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin: 12px 0;
+    }
+
+    .df-col {
+      display: flex;
+      gap: 16px;
+      padding: 4px 0;
+      border-bottom: 1px solid #1e2133;
+      font-size: 13px;
+    }
+
+    .df-col:last-child { border-bottom: none; }
+    .df-col .col-name { font-family: var(--font-mono); color: var(--accent2); width: 100px; flex-shrink: 0; }
+    .df-col .col-type { font-family: var(--font-mono); color: var(--warn); width: 80px; flex-shrink: 0; }
+    .df-col .col-desc { color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<!-- ──────────── SIDEBAR ──────────── -->
+<nav>
+  <div class="logo">
+    backtest-lib
+    <span>v0.1.0 — documentation</span>
+  </div>
+
+  <div class="nav-section">Installation</div>
+  <a href="#install">Mise en place</a>
+
+  <div class="nav-section">DataManager</div>
+  <a href="#dm">Vue d'ensemble</a>
+  <a href="#dm-init" class="method">__init__</a>
+  <a href="#dm-parse-duration" class="method">parse_duration</a>
+  <a href="#dm-fetch-symbol" class="method">fetch_symbol</a>
+  <a href="#dm-fetch-symbol-range" class="method">fetch_symbol_range</a>
+  <a href="#dm-load-feather" class="method">load_symbol_from_feather</a>
+  <a href="#dm-load-or-fetch" class="method">load_or_fetch_symbol_range</a>
+  <a href="#dm-download-period" class="method">download_period</a>
+  <a href="#dm-download-range" class="method">download_range</a>
+  <a href="#dm-load-or-download" class="method">load_or_download_range</a>
+
+  <div class="nav-section">TradingSimulator</div>
+  <a href="#ts">Vue d'ensemble</a>
+  <a href="#ts-init" class="method">__init__</a>
+  <a href="#ts-run" class="method">run_simulation</a>
+  <a href="#ts-batch" class="method">run_batch_simulations</a>
+  <a href="#ts-export" class="method">export_results_to_json</a>
+
+  <div class="nav-section">BacktestAnalyzer</div>
+  <a href="#ba">Vue d'ensemble</a>
+  <a href="#ba-init" class="method">__init__</a>
+  <a href="#ba-run" class="method">run</a>
+
+  <div class="nav-section">Exemples</div>
+  <a href="#ex-quickstart">Quickstart complet</a>
+  <a href="#ex-df">Structure des DataFrames</a>
+  <a href="#ex-strategy">Écrire une stratégie</a>
+</nav>
+
+<!-- ──────────── MAIN ──────────── -->
+<main>
+
+  <h1>backtest-lib <span class="version">v0.1.0</span></h1>
+  <p class="subtitle">
+    Librairie locale pour le téléchargement de données crypto (ccxt + cache Feather),
+    le backtest vectorisé (vectorbt) et l'analyse des résultats.
+  </p>
+
+  <!-- ══════════════════════════════════════════════ INSTALL -->
+  <h2 id="install">Installation</h2>
+
+  <p>La librairie est installée en mode éditable depuis le répertoire source.
+     Toute modification dans les fichiers source est immédiatement disponible sans réinstallation.</p>
+
+  <pre><code><span class="cm"># Depuis le dossier du projet</span>
+pip install -e /home/faucheur/code/backtest
+
+<span class="cm"># Import dans n'importe quel script</span>
+<span class="kw">from</span> data_manager <span class="kw">import</span> DataManager
+<span class="kw">from</span> backtest_vectorbt <span class="kw">import</span> TradingSimulator
+<span class="kw">from</span> backtest_analysis <span class="kw">import</span> BacktestAnalyzer</code></pre>
+
+  <div class="note">
+    <strong>Mode éditable (<code>-e</code>)</strong>
+    pip pointe directement vers le dossier source. Pas besoin de réinstaller après chaque modification.
+  </div>
+
+  <hr />
+
+  <!-- ══════════════════════════════════════════════ DATA MANAGER -->
+  <h2 id="dm">DataManager</h2>
+  <div class="class-block">
+    <div class="class-title">class DataManager</div>
+    <div class="class-import">from data_manager import DataManager</div>
+    <p class="class-desc">
+      Gestionnaire de données OHLCV crypto via ccxt, avec cache local au format Feather (Apache Arrow).
+      Il évite de re-télécharger les données déjà présentes en cache, et supporte la récupération
+      incrémentale (seul l'intervalle manquant est téléchargé).
+    </p>
+  </div>
+
+  <!-- __init__ -->
+  <h3 id="dm-init">__init__</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        <span class="fn-name">DataManager</span>(<span class="param-name">exchange_name</span><span class="param-type">: str</span> <span class="param-default">= "binance"</span>, <span class="param-name">data_dir</span><span class="param-type">: str</span> <span class="param-default">= "data"</span>)
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Initialise le gestionnaire et crée les dossiers de cache si nécessaire.</p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr>
+          <td>exchange_name</td><td>str</td>
+          <td>Nom de l'exchange ccxt (<code>"binance"</code>, <code>"kraken"</code>, <code>"bybit"</code>…). Doit correspondre à un attribut valide du module ccxt.</td>
+          <td><code>"binance"</code></td>
+        </tr>
+        <tr>
+          <td>data_dir</td><td>str</td>
+          <td>Répertoire racine des données. Le cache est stocké dans <code>data_dir/cache/</code>.</td>
+          <td><code>"data"</code></td>
+        </tr>
+      </table>
+      <pre><code>dm <span class="op">=</span> DataManager()  <span class="cm"># binance, ./data/</span>
+dm <span class="op">=</span> DataManager(<span class="str">"kraken"</span>, <span class="str">"/tmp/crypto_data"</span>)</code></pre>
+    </div>
+  </div>
+
+  <!-- parse_duration -->
+  <h3 id="dm-parse-duration">parse_duration <span class="tag tag-static">static</span></h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        DataManager.<span class="fn-name">parse_duration</span>(<span class="param-name">duration</span><span class="param-type">: str</span>) <span class="op">→</span> <span class="param-type">timedelta</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Convertit une chaîne de durée en <code>timedelta</code>. Utilisé en interne par <code>fetch_symbol</code> et <code>download_period</code>.</p>
+
+      <div class="grid-2">
+        <div class="grid-item">
+          <div class="grid-title">Jours</div>
+          <code>"7j"</code><code>"14d"</code><code>"30day"</code>
+        </div>
+        <div class="grid-item">
+          <div class="grid-title">Semaines</div>
+          <code>"2w"</code><code>"4week"</code>
+        </div>
+        <div class="grid-item">
+          <div class="grid-title">Heures</div>
+          <code>"6h"</code><code>"48hour"</code>
+        </div>
+        <div class="grid-item">
+          <div class="grid-title">Mois / Ans</div>
+          <code>"3mois"</code><code>"1an"</code><code>"1y"</code><code>"2year"</code>
+        </div>
+      </div>
+
+      <div class="tip">
+        <strong>Espaces tolérés partout</strong>
+        Les espaces sont supprimés avant parsing : <code>"30 d"</code>, <code>"30d"</code> et <code>"  30d  "</code> sont équivalents.
+      </div>
+      <div class="warn-box">
+        <strong>Mois et années approximatifs</strong>
+        1 mois = 30 jours fixes, 1 an = 365 jours fixes. Pas de calcul calendaire (pas de prise en compte des années bissextiles ou des mois de 28/31 jours).
+      </div>
+    </div>
+  </div>
+
+  <!-- fetch_symbol -->
+  <h3 id="dm-fetch-symbol">fetch_symbol</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        dm.<span class="fn-name">fetch_symbol</span>(<span class="param-name">symbol</span><span class="param-type">: str</span>, <span class="param-name">timeframe</span><span class="param-type">: str</span>, <span class="param-name">duration</span><span class="param-type">: str</span>, ...) <span class="op">→</span> <span class="param-type">DataFrame</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Télécharge les données OHLCV pour les <em>N</em> dernières unités de temps à partir de maintenant. Utilise et met à jour le cache local automatiquement.</p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr>
+          <td>symbol <span class="required">requis</span></td><td>str</td>
+          <td>Paire de trading au format <code>BASE/QUOTE</code>, ex : <code>"BTC/USDT"</code>. Doit être un marché spot actif sur l'exchange.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>timeframe <span class="required">requis</span></td><td>str</td>
+          <td>Résolution des bougies selon la nomenclature ccxt : <code>"1m"</code>, <code>"5m"</code>, <code>"15m"</code>, <code>"1h"</code>, <code>"4h"</code>, <code>"1d"</code>… Les timeframes valides dépendent de l'exchange. Sur Binance : <code>"1m"</code> à <code>"1M"</code> ; vérifier <code>exchange.timeframes</code> pour les autres exchanges.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>duration <span class="required">requis</span></td><td>str</td>
+          <td>Durée à remonter depuis maintenant. Voir <a href="#dm-parse-duration">parse_duration</a> pour les formats acceptés.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>exchange_override <span class="optional">optionnel</span></td><td>ccxt.Exchange</td>
+          <td>Instance ccxt alternative (utile pour les workers parallèles). Si omis, l'instance interne est utilisée.</td>
+          <td><code>None</code></td>
+        </tr>
+        <tr>
+          <td>validate_symbol <span class="optional">optionnel</span></td><td>bool</td>
+          <td>Active la validation du symbole sur l'exchange (appel réseau). Mettre à <code>False</code> si déjà validé en amont.</td>
+          <td><code>True</code></td>
+        </tr>
+      </table>
+      <div class="returns">
+        <div class="returns-label">Retourne</div>
+        <code>pd.DataFrame</code> indexé par <code>timestamp</code> (DatetimeIndex UTC) avec les colonnes <code>open, high, low, close, volume</code>.
+      </div>
+      <pre><code>df <span class="op">=</span> dm.fetch_symbol(<span class="str">"BTC/USDT"</span>, <span class="str">"1h"</span>, <span class="str">"30d"</span>)
+<span class="nb">print</span>(df.head())</code></pre>
+      <div class="warn-box">
+        <strong>Symboles spot uniquement</strong>
+        La validation rejette les marchés futures/perpetual/swap. Utiliser uniquement des paires spot comme <code>"ETH/USDT"</code>.
+      </div>
+    </div>
+  </div>
+
+  <!-- fetch_symbol_range -->
+  <h3 id="dm-fetch-symbol-range">fetch_symbol_range</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        dm.<span class="fn-name">fetch_symbol_range</span>(<span class="param-name">symbol</span><span class="param-type">: str</span>, <span class="param-name">timeframe</span><span class="param-type">: str</span>, <span class="param-name">start</span><span class="param-type">: str|int|float|datetime</span>, <span class="param-name">end</span><span class="param-type">: str|int|float|datetime</span>, ...) <span class="op">→</span> <span class="param-type">DataFrame</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Télécharge les données OHLCV pour une plage de dates précise <code>[start, end]</code>. Même logique de cache que <code>fetch_symbol</code>.</p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr>
+          <td>symbol <span class="required">requis</span></td><td>str</td>
+          <td>Paire spot, ex : <code>"SOL/USDT"</code>.</td><td>—</td>
+        </tr>
+        <tr>
+          <td>timeframe <span class="required">requis</span></td><td>str</td>
+          <td>Résolution ccxt.</td><td>—</td>
+        </tr>
+        <tr>
+          <td>start <span class="required">requis</span></td><td>str | int | float | datetime</td>
+          <td>Date de début. Accepte : chaîne ISO (<code>"2024-01-01"</code>), timestamp en secondes (<code>1700000000</code>), timestamp en ms (<code>1700000000000</code>), ou objet <code>datetime</code>.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>end <span class="required">requis</span></td><td>str | int | float | datetime</td>
+          <td>Date de fin, même formats que <code>start</code>. Doit être strictement supérieur à <code>start</code>.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>validate_symbol <span class="optional">optionnel</span></td><td>bool</td><td>Voir <a href="#dm-fetch-symbol">fetch_symbol</a>.</td><td><code>True</code></td>
+        </tr>
+      </table>
+      <div class="returns">
+        <div class="returns-label">Retourne</div>
+        <code>pd.DataFrame</code> indexé par DatetimeIndex UTC, colonnes OHLCV.
+      </div>
+      <pre><code>df <span class="op">=</span> dm.fetch_symbol_range(
+    <span class="str">"ETH/USDT"</span>,
+    <span class="str">"4h"</span>,
+    start<span class="op">=</span><span class="str">"2024-01-01"</span>,
+    end<span class="op">=</span><span class="str">"2024-06-01"</span>,
+)</code></pre>
+    </div>
+  </div>
+
+  <!-- load_symbol_from_feather -->
+  <h3 id="dm-load-feather">load_symbol_from_feather</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        dm.<span class="fn-name">load_symbol_from_feather</span>(<span class="param-name">symbol</span><span class="param-type">: str</span>, <span class="param-name">timeframe</span><span class="param-type">: str</span>, <span class="param-name">start</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">end</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">file_path</span><span class="op">=</span><span class="param-default">None</span>) <span class="op">→</span> <span class="param-type">DataFrame</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Charge un fichier Feather local déjà existant (aucun appel réseau). Si <code>file_path</code> est omis, cherche <code>data/&lt;symbol&gt;_&lt;timeframe&gt;_data.feather</code>.</p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>symbol <span class="required">requis</span></td><td>str</td><td>Ex : <code>"BTC/USDT"</code>. Utilisé pour construire le chemin de fichier par défaut.</td><td>—</td></tr>
+        <tr><td>timeframe <span class="required">requis</span></td><td>str</td><td>Ex : <code>"1h"</code>.</td><td>—</td></tr>
+        <tr><td>start <span class="optional">optionnel</span></td><td>str|int|float|datetime</td><td>Filtre les données après cette date.</td><td><code>None</code></td></tr>
+        <tr><td>end <span class="optional">optionnel</span></td><td>str|int|float|datetime</td><td>Filtre les données avant cette date.</td><td><code>None</code></td></tr>
+        <tr><td>file_path <span class="optional">optionnel</span></td><td>str</td><td>Chemin explicite vers le fichier <code>.feather</code>. Si fourni, remplace le chemin calculé automatiquement.</td><td><code>None</code></td></tr>
+      </table>
+      <div class="tip">
+        <strong>Quand l'utiliser</strong>
+        Idéal pour travailler hors-ligne ou sur des exports de données tiers. Le fichier doit contenir les colonnes <code>timestamp, open, high, low, close, volume</code>.
+      </div>
+    </div>
+  </div>
+
+  <!-- load_or_fetch_symbol_range -->
+  <h3 id="dm-load-or-fetch">load_or_fetch_symbol_range</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        dm.<span class="fn-name">load_or_fetch_symbol_range</span>(<span class="param-name">symbol</span>, <span class="param-name">timeframe</span>, <span class="param-name">start</span>, <span class="param-name">end</span>, <span class="param-name">file_path</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">prefer_file</span><span class="op">=</span><span class="param-default">True</span>) <span class="op">→</span> <span class="param-type">DataFrame</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">
+        Version intelligente : charge le fichier Feather local s'il existe (<code>prefer_file=True</code>),
+        sinon télécharge via l'exchange. Version unitaire (un seul symbole) de <code>load_or_download_range</code>.
+      </p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>prefer_file <span class="optional">optionnel</span></td><td>bool</td><td>Si <code>True</code> et qu'un fichier Feather existe, il est utilisé. Mettre à <code>False</code> pour forcer le téléchargement.</td><td><code>True</code></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- download_period -->
+  <h3 id="dm-download-period">download_period</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        dm.<span class="fn-name">download_period</span>(<span class="param-name">symbols</span><span class="param-type">: List[str]</span>, <span class="param-name">timeframe</span><span class="param-type">: str</span>, <span class="param-name">duration</span><span class="param-type">: str</span>, <span class="param-name">max_workers</span><span class="param-type">: int</span> <span class="op">=</span> <span class="nb">1</span>) <span class="op">→</span> <span class="param-type">Dict[str, DataFrame]</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Télécharge en batch la période glissante pour une liste de symboles. Avec <code>max_workers &gt; 1</code>, les téléchargements sont parallélisés via <code>ThreadPoolExecutor</code>, chaque thread ayant sa propre connexion exchange.</p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>symbols <span class="required">requis</span></td><td>List[str]</td><td>Liste de paires spot, ex : <code>["BTC/USDT", "ETH/USDT", "SOL/USDT"]</code>.</td><td>—</td></tr>
+        <tr><td>timeframe <span class="required">requis</span></td><td>str</td><td>Même timeframe appliqué à tous les symboles.</td><td>—</td></tr>
+        <tr><td>duration <span class="required">requis</span></td><td>str</td><td>Durée glissante, ex : <code>"3mois"</code>.</td><td>—</td></tr>
+        <tr><td>max_workers <span class="optional">optionnel</span></td><td>int</td><td>Nombre de threads parallèles. Valeur <code>1</code> = séquentiel. Recommandé : 4–8 selon la limite de taux de l'exchange.</td><td><code>1</code></td></tr>
+      </table>
+      <div class="returns">
+        <div class="returns-label">Retourne</div>
+        <code>Dict[str, pd.DataFrame]</code> — clé = symbole, valeur = DataFrame OHLCV. L'ordre des clés respecte l'ordre de la liste <code>symbols</code>.
+      </div>
+      <pre><code>symbols <span class="op">=</span> [<span class="str">"BTC/USDT"</span>, <span class="str">"ETH/USDT"</span>, <span class="str">"SOL/USDT"</span>]
+data <span class="op">=</span> dm.download_period(symbols, <span class="str">"1h"</span>, <span class="str">"3mois"</span>, max_workers<span class="op">=</span><span class="nb">4</span>)
+btc_df <span class="op">=</span> data[<span class="str">"BTC/USDT"</span>]</code></pre>
+    </div>
+  </div>
+
+  <!-- download_range -->
+  <h3 id="dm-download-range">download_range</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        dm.<span class="fn-name">download_range</span>(<span class="param-name">symbols</span><span class="param-type">: List[str]</span>, <span class="param-name">timeframe</span><span class="param-type">: str</span>, <span class="param-name">start</span>, <span class="param-name">end</span>, <span class="param-name">max_workers</span><span class="op">=</span><span class="nb">1</span>) <span class="op">→</span> <span class="param-type">Dict[str, DataFrame]</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Identique à <code>download_period</code> mais pour une plage de dates fixe au lieu d'une durée glissante.</p>
+      <pre><code>data <span class="op">=</span> dm.download_range(
+    [<span class="str">"BTC/USDT"</span>, <span class="str">"ETH/USDT"</span>],
+    <span class="str">"1d"</span>,
+    start<span class="op">=</span><span class="str">"2023-01-01"</span>,
+    end<span class="op">=</span><span class="str">"2024-01-01"</span>,
+    max_workers<span class="op">=</span><span class="nb">2</span>,
+)</code></pre>
+    </div>
+  </div>
+
+  <!-- load_or_download_range -->
+  <h3 id="dm-load-or-download">load_or_download_range</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        dm.<span class="fn-name">load_or_download_range</span>(<span class="param-name">symbols</span>, <span class="param-name">timeframe</span>, <span class="param-name">start</span>, <span class="param-name">end</span>, <span class="param-name">max_workers</span><span class="op">=</span><span class="nb">1</span>, <span class="param-name">prefer_file</span><span class="op">=</span><span class="nb">True</span>, <span class="param-name">file_map</span><span class="op">=</span><span class="nb">None</span>) <span class="op">→</span> <span class="param-type">Dict[str, DataFrame]</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">
+        Version batch de <code>load_or_fetch_symbol_range</code>. Pour chaque symbole : charge le Feather local si disponible, sinon télécharge. Supporte un mapping de chemins explicites via <code>file_map</code>.
+      </p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>file_map <span class="optional">optionnel</span></td><td>Dict[str, str]</td><td>Associe un symbole à un chemin Feather spécifique. Ex : <code>{"BTC/USDT": "/data/btc.feather"}</code>. Les symboles absents du map utilisent le chemin automatique.</td><td><code>None</code></td></tr>
+        <tr><td>prefer_file <span class="optional">optionnel</span></td><td>bool</td><td>Priorité au fichier local si <code>True</code>.</td><td><code>True</code></td></tr>
+      </table>
+      <pre><code>data <span class="op">=</span> dm.load_or_download_range(
+    symbols<span class="op">=</span>[<span class="str">"BTC/USDT"</span>, <span class="str">"ETH/USDT"</span>],
+    timeframe<span class="op">=</span><span class="str">"1h"</span>,
+    start<span class="op">=</span><span class="str">"2024-01-01"</span>,
+    end<span class="op">=</span><span class="str">"2024-12-31"</span>,
+    file_map<span class="op">=</span>{<span class="str">"BTC/USDT"</span>: <span class="str">"/data/export/btc_1h.feather"</span>},
+    prefer_file<span class="op">=</span><span class="nb">True</span>,
+)</code></pre>
+    </div>
+  </div>
+
+  <!-- Limitations DataManager -->
+  <h3 id="dm-limits">Limites et comportements à connaître</h3>
+  <div class="method-card">
+    <div class="method-body">
+      <table>
+        <tr><th>Sujet</th><th>Comportement</th></tr>
+        <tr>
+          <td><strong>Cache incrémental avec court-circuit</strong></td>
+          <td>Avant tout téléchargement, le programme vérifie si le cache couvre déjà la plage demandée (<em>file présent + période couverte</em>). Si oui, les données sont retournées directement sans appel réseau ni écriture disque. Sinon, seuls les intervalles manquants sont téléchargés. Si l'exchange corrige des données historiques, elles ne seront pas mises à jour automatiquement.</td>
+        </tr>
+        <tr>
+          <td><strong>Cache partagé par (symbol, timeframe)</strong></td>
+          <td>Un seul fichier cache par paire (symbol, timeframe). Si des appels successifs couvrent des plages très différentes, tout l'historique connu s'accumule dans ce fichier.</td>
+        </tr>
+        <tr>
+          <td><strong>Timeframes</strong></td>
+          <td>Délégués directement à ccxt. Les valeurs valides dépendent de l'exchange. Pour Binance : <code>"1m"</code>, <code>"3m"</code>, <code>"5m"</code>, <code>"15m"</code>, <code>"30m"</code>, <code>"1h"</code>, <code>"2h"</code>, <code>"4h"</code>, <code>"6h"</code>, <code>"8h"</code>, <code>"12h"</code>, <code>"1d"</code>, <code>"3d"</code>, <code>"1w"</code>, <code>"1M"</code>. Consulter <code>exchange.timeframes</code> pour les autres exchanges.</td>
+        </tr>
+        <tr>
+          <td><strong>Erreurs en mode parallèle</strong></td>
+          <td>Avec <code>max_workers &gt; 1</code>, tous les symboles sont tentés avant de remonter les erreurs. Si au moins un symbole échoue, un <code>RuntimeError</code> est levé à la fin avec la liste des symboles en échec. Les symboles réussis sont perdus. Gérer l'exception si un comportement partiel est souhaité.</td>
+        </tr>
+        <tr>
+          <td><strong>Barres de progression</strong></td>
+          <td>Les méthodes batch (<code>download_period</code>, <code>download_range</code>, <code>load_or_download_range</code>) affichent une barre de progression par symbole via <code>tqdm</code>. <code>_download_chunk</code> affiche une barre par page d'API (estimation). Les barres internes disparaissent après chaque symbole (<code>leave=False</code>).</td>
+        </tr>
+        <tr>
+          <td><strong>Spot uniquement</strong></td>
+          <td>La validation refuse les marchés futures/perpetual/swap. Seules les paires spot sont acceptées (ex : <code>"BTC/USDT"</code>, pas <code>"BTC/USDT:USDT"</code>).</td>
+        </tr>
+        <tr>
+          <td><strong>Limite API</strong></td>
+          <td>Chaque page de téléchargement est limitée à 1000 candles. Le nombre de pages dépend de la durée et du timeframe. Ex : 1 an de données en <code>"1h"</code> ≈ 9 pages.</td>
+        </tr>
+        <tr>
+          <td><strong>Tolérance bougie en cours (<code>fetch_symbol</code>)</strong></td>
+          <td>Lors d'un appel par durée glissante (<code>fetch_symbol</code>), la bougie en cours de formation n'est pas encore fermée sur l'exchange. Le cache est considéré complet si son dernier timestamp est à moins d'un timeframe de l'instant présent, évitant un appel réseau inutile pour récupérer une bougie incomplète.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <hr />
+
+  <!-- ══════════════════════════════════════════════ TRADING SIMULATOR -->
+  <h2 id="ts">TradingSimulator</h2>
+  <div class="class-block">
+    <div class="class-title">class TradingSimulator</div>
+    <div class="class-import">from backtest_vectorbt import TradingSimulator</div>
+    <p class="class-desc">
+      Moteur de backtest vectorisé basé sur <strong>vectorbt</strong>. Encapsule la construction du portefeuille,
+      le calcul des métriques de performance (Sharpe, drawdown, beta, win rate…) et l'export des résultats.
+      Conçu pour fonctionner avec un objet <code>strategy</code> qui expose les méthodes <code>prepare_data</code>
+      et <code>generate_signals</code>.
+    </p>
+  </div>
+
+  <!-- __init__ -->
+  <h3 id="ts-init">__init__</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        <span class="fn-name">TradingSimulator</span>(<span class="param-name">config</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">strategy</span><span class="op">=</span><span class="param-default">None</span>)
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">
+        Initialise le simulateur. Les portfolios sérialisés (fichiers <code>.pkl</code>) sont stockés dans
+        <code>config.PORTFOLIO_DIR</code> (défaut : <code>backtests/portfolios/</code>).
+      </p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr>
+          <td>config <span class="optional">optionnel</span></td><td>object</td>
+          <td>
+            Objet de configuration. Doit exposer :
+            <ul style="margin-top:6px">
+              <li><code>PORTFOLIO_DIR: str</code> — dossier de sauvegarde des portfolios</li>
+              <li><code>default_params: dict</code> — paramètres par défaut (voir ci-dessous)</li>
+            </ul>
+          </td>
+          <td><code>None</code></td>
+        </tr>
+        <tr>
+          <td>strategy <span class="optional">optionnel</span></td><td>object</td>
+          <td>Objet stratégie. Doit exposer <code>name</code>, <code>prepare_data()</code> et <code>generate_signals()</code>. Voir <a href="#ex-strategy">Écrire une stratégie</a>.</td>
+          <td><code>None</code></td>
+        </tr>
+      </table>
+
+      <h4>Structure de default_params</h4>
+      <pre><code>params <span class="op">=</span> {
+    <span class="str">"capital_initial"</span>: <span class="nb">10_000.0</span>,   <span class="cm"># Capital de départ en USD</span>
+    <span class="str">"fees"</span>:            <span class="nb">0.001</span>,        <span class="cm"># Frais par trade (0.1%)</span>
+    <span class="str">"slippage_base"</span>:   <span class="nb">0.0</span>,          <span class="cm"># Slippage par trade</span>
+    <span class="str">"timeframe"</span>:       <span class="str">"1h"</span>,         <span class="cm"># Utilisé pour annualiser les métriques</span>
+}</code></pre>
+    </div>
+  </div>
+
+  <!-- run_simulation -->
+  <h3 id="ts-run">run_simulation</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        ts.<span class="fn-name">run_simulation</span>(<span class="param-name">symbol</span><span class="param-type">: str</span>, <span class="param-name">data_dict</span><span class="param-type">: dict</span>, <span class="param-name">params</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">reload</span><span class="op">=</span><span class="param-default">False</span>) <span class="op">→</span> <span class="param-type">dict</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">
+        Lance la simulation pour un seul symbole. Si un fichier <code>.pkl</code> existe déjà pour ce symbole/stratégie
+        et que <code>reload=False</code>, le portfolio est rechargé depuis le disque sans recalcul.
+      </p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>symbol <span class="required">requis</span></td><td>str</td><td>Paire de trading, ex : <code>"BTC/USDT"</code>.</td><td>—</td></tr>
+        <tr><td>data_dict <span class="required">requis</span></td><td>dict</td><td>Dictionnaire <code>{symbol: DataFrame}</code> retourné par <code>DataManager</code>.</td><td>—</td></tr>
+        <tr><td>params <span class="optional">optionnel</span></td><td>dict</td><td>Remplace <code>config.default_params</code>. Voir la structure ci-dessus.</td><td><code>None</code></td></tr>
+        <tr><td>reload <span class="optional">optionnel</span></td><td>bool</td><td>Si <code>True</code>, force le recalcul même si un <code>.pkl</code> existe.</td><td><code>False</code></td></tr>
+      </table>
+      <div class="returns">
+        <div class="returns-label">Retourne</div>
+        <code>{"symbol": str, "portfolio_data": dict}</code> où <code>portfolio_data</code> contient :
+        <ul style="margin-top:8px">
+          <li><code>final_value</code>, <code>total_profit</code>, <code>total_return</code></li>
+          <li><code>annualized_return</code>, <code>sharpe_ratio</code>, <code>beta_underlying</code></li>
+          <li><code>max_drawdown</code>, <code>win_rate</code>, <code>trade_count</code></li>
+          <li><code>equity_curve</code> : <code>pd.Series</code> de la valeur du portefeuille dans le temps</li>
+          <li><code>portfolio_path</code> : chemin du fichier <code>.pkl</code> sauvegardé</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- run_batch_simulations -->
+  <h3 id="ts-batch">run_batch_simulations</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        ts.<span class="fn-name">run_batch_simulations</span>(<span class="param-name">symbols</span><span class="param-type">: List[str]</span>, <span class="param-name">data_dict</span><span class="param-type">: dict</span>, <span class="param-name">params</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">reload</span><span class="op">=</span><span class="param-default">False</span>) <span class="op">→</span> <span class="param-type">Tuple[dict, dict]</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">
+        Lance les simulations en parallèle sur tous les symboles via <code>ProcessPoolExecutor</code> (18 workers hardcodés).
+        Les erreurs par symbole sont catchées et loggées sans interrompre le batch.
+      </p>
+      <div class="warn-box">
+        <strong>Attention — ProcessPoolExecutor</strong>
+        Le code de la stratégie et du config doit être <em>picklable</em> (pas de lambdas, pas de closures non sérialisables).
+        Ce point d'entrée est conçu pour des runs sur un grand nombre de symboles (20+).
+      </div>
+      <div class="returns">
+        <div class="returns-label">Retourne</div>
+        <code>(results, portfolios_data)</code> — deux dicts avec le symbole comme clé.
+        <code>portfolios_data</code> est directement passable à <code>export_results_to_json</code>.
+      </div>
+      <pre><code>results, portfolios_data <span class="op">=</span> ts.run_batch_simulations(
+    symbols, data_dict, params<span class="op">=</span>params, reload<span class="op">=</span><span class="nb">False</span>
+)
+ts.export_results_to_json(portfolios_data, symbols)</code></pre>
+    </div>
+  </div>
+
+  <!-- export_results_to_json -->
+  <h3 id="ts-export">export_results_to_json</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        ts.<span class="fn-name">export_results_to_json</span>(<span class="param-name">portfolios_data</span><span class="param-type">: dict</span>, <span class="param-name">symbols</span><span class="param-type">: List[str]</span>, <span class="param-name">output_path</span><span class="op">=</span><span class="str">"backtests/results/results.json"</span>)
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">
+        Sérialise les résultats en JSON et exporte les equity curves en CSV.
+        Le JSON généré est le fichier d'entrée attendu par <code>BacktestAnalyzer</code>.
+      </p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>output_path <span class="optional">optionnel</span></td><td>str</td><td>Chemin du JSON de sortie. Un fichier <code>*_equity_curves.csv</code> est automatiquement créé au même endroit.</td><td><code>"backtests/results/results.json"</code></td></tr>
+      </table>
+      <div class="tip">
+        <strong>Lien avec BacktestAnalyzer</strong>
+        Le JSON produit doit être passé à <code>BacktestAnalyzer(summary_path=...)</code> pour générer le rapport complet.
+      </div>
+    </div>
+  </div>
+
+  <hr />
+
+  <!-- ══════════════════════════════════════════════ BACKTEST ANALYZER -->
+  <h2 id="ba">BacktestAnalyzer</h2>
+  <div class="class-block">
+    <div class="class-title">class BacktestAnalyzer</div>
+    <div class="class-import">from backtest_analysis import BacktestAnalyzer</div>
+    <p class="class-desc">
+      Analyse complète d'un backtest à partir du JSON produit par <code>TradingSimulator.export_results_to_json</code>.
+      Génère : rapport console formaté, CSV, JSON de stats globales, et 6 graphiques matplotlib (PNG).
+    </p>
+  </div>
+
+  <!-- __init__ -->
+  <h3 id="ba-init">__init__</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        <span class="fn-name">BacktestAnalyzer</span>(<span class="param-name">summary_path</span><span class="op">=</span><span class="str">"backtests/results/backtest_zscore_summary.json"</span>, <span class="param-name">graphs_dir</span><span class="op">=</span><span class="str">"backtests/results/graphs"</span>, <span class="param-name">out_csv</span><span class="op">=</span><span class="str">"backtests/results/backtest_analysis.csv"</span>, <span class="param-name">out_json</span><span class="op">=</span><span class="str">"backtests/results/backtest_analysis_global.json"</span>)
+      </div>
+    </div>
+    <div class="method-body">
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>summary_path <span class="optional">optionnel</span></td><td>str</td><td>Chemin du JSON de résultats bruts (produit par <code>export_results_to_json</code>). L'analyzer cherche aussi un fichier <code>*_equity_curves.csv</code> au même endroit.</td><td>voir ci-dessus</td></tr>
+        <tr><td>graphs_dir <span class="optional">optionnel</span></td><td>str</td><td>Dossier de destination des graphiques PNG.</td><td>voir ci-dessus</td></tr>
+        <tr><td>out_csv <span class="optional">optionnel</span></td><td>str</td><td>Chemin du CSV d'analyse par asset.</td><td>voir ci-dessus</td></tr>
+        <tr><td>out_json <span class="optional">optionnel</span></td><td>str</td><td>Chemin du JSON de statistiques globales.</td><td>voir ci-dessus</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- run -->
+  <h3 id="ba-run">run</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        analyzer.<span class="fn-name">run</span>() <span class="op">→</span> <span class="param-type">Dict[str, Any]</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Point d'entrée principal. Exécute dans l'ordre :</p>
+      <ol style="margin: 10px 0 14px 20px; font-size: 13.5px; color: var(--text-dim);">
+        <li>Chargement du JSON de résultats</li>
+        <li>Construction du tableau de métriques par asset</li>
+        <li>Chargement ou reconstruction des equity curves (depuis le CSV ou les fichiers <code>.pkl</code>)</li>
+        <li>Calcul des statistiques globales</li>
+        <li>Affichage du rapport console</li>
+        <li>Export CSV et JSON</li>
+        <li>Génération des 6 graphiques PNG</li>
+      </ol>
+
+      <h4>Graphiques générés</h4>
+      <table>
+        <tr><th>Fichier</th><th>Description</th></tr>
+        <tr><td>rendement_par_asset.png</td><td>Bar chart horizontal des rendements (vert/rouge)</td></tr>
+        <tr><td>sharpe_vs_drawdown.png</td><td>Scatter Sharpe ratio vs Max Drawdown, coloré par rendement</td></tr>
+        <tr><td>winrate_vs_trades.png</td><td>Scatter Win Rate vs nombre de trades</td></tr>
+        <tr><td>distribution_rendements.png</td><td>Histogramme de la distribution des rendements</td></tr>
+        <tr><td>heatmap_metriques.png</td><td>Heatmap normalisée des métriques clés par asset</td></tr>
+        <tr><td>equity_curves_individual.png</td><td>Equity curves individuelles normalisées (si disponibles)</td></tr>
+      </table>
+
+      <div class="returns">
+        <div class="returns-label">Retourne</div>
+        <code>Dict[str, Any]</code> — statistiques globales (rendement moyen, Sharpe médian, assets profitables…).
+        Retourne <code>{}</code> si aucun résultat à analyser.
+      </div>
+    </div>
+  </div>
+
+  <hr />
+
+  <!-- ══════════════════════════════════════════════ EXEMPLES -->
+  <h2 id="ex-quickstart">Quickstart complet</h2>
+
+  <pre><code><span class="kw">from</span> data_manager <span class="kw">import</span> DataManager
+<span class="kw">from</span> backtest_vectorbt <span class="kw">import</span> TradingSimulator
+<span class="kw">from</span> backtest_analysis <span class="kw">import</span> BacktestAnalyzer
+
+<span class="cm"># 1. Télécharger les données</span>
+dm <span class="op">=</span> DataManager(<span class="str">"binance"</span>, <span class="str">"./data"</span>)
+symbols <span class="op">=</span> [<span class="str">"BTC/USDT"</span>, <span class="str">"ETH/USDT"</span>, <span class="str">"SOL/USDT"</span>]
+data_dict <span class="op">=</span> dm.download_period(symbols, <span class="str">"1h"</span>, <span class="str">"3mois"</span>, max_workers<span class="op">=</span><span class="nb">3</span>)
+
+<span class="cm"># 2. Configurer la simulation</span>
+<span class="kw">class</span> <span class="cls">Config</span>:
+    PORTFOLIO_DIR <span class="op">=</span> <span class="str">"backtests/portfolios"</span>
+    default_params <span class="op">=</span> {
+        <span class="str">"capital_initial"</span>: <span class="nb">10_000</span>,
+        <span class="str">"fees"</span>: <span class="nb">0.001</span>,
+        <span class="str">"slippage_base"</span>: <span class="nb">0.0</span>,
+        <span class="str">"timeframe"</span>: <span class="str">"1h"</span>,
+    }
+
+ts <span class="op">=</span> TradingSimulator(config<span class="op">=</span>Config(), strategy<span class="op">=</span>my_strategy)
+
+<span class="cm"># 3. Lancer le backtest</span>
+results, portfolios_data <span class="op">=</span> ts.run_batch_simulations(symbols, data_dict)
+
+<span class="cm"># 4. Exporter les résultats</span>
+output <span class="op">=</span> <span class="str">"backtests/results/results.json"</span>
+ts.export_results_to_json(portfolios_data, symbols, output_path<span class="op">=</span>output)
+
+<span class="cm"># 5. Analyser et générer les graphiques</span>
+analyzer <span class="op">=</span> BacktestAnalyzer(summary_path<span class="op">=</span>output)
+stats <span class="op">=</span> analyzer.run()</code></pre>
+
+  <!-- ══ Structure DataFrame ══ -->
+  <h2 id="ex-df">Structure des DataFrames OHLCV</h2>
+
+  <p>Toutes les méthodes de <code>DataManager</code> retournent des DataFrames avec ce schéma :</p>
+
+  <div class="df-schema">
+    <div class="df-col">
+      <span class="col-name">index</span>
+      <span class="col-type">DatetimeIndex</span>
+      <span class="col-desc">Horodatage UTC, fréquence = timeframe demandé</span>
+    </div>
+    <div class="df-col">
+      <span class="col-name">open</span>
+      <span class="col-type">float64</span>
+      <span class="col-desc">Prix d'ouverture de la bougie</span>
+    </div>
+    <div class="df-col">
+      <span class="col-name">high</span>
+      <span class="col-type">float64</span>
+      <span class="col-desc">Prix le plus haut</span>
+    </div>
+    <div class="df-col">
+      <span class="col-name">low</span>
+      <span class="col-type">float64</span>
+      <span class="col-desc">Prix le plus bas</span>
+    </div>
+    <div class="df-col">
+      <span class="col-name">close</span>
+      <span class="col-type">float64</span>
+      <span class="col-desc">Prix de clôture</span>
+    </div>
+    <div class="df-col">
+      <span class="col-name">volume</span>
+      <span class="col-type">float64</span>
+      <span class="col-desc">Volume échangé (en unité de la base, ex : BTC)</span>
+    </div>
+  </div>
+
+  <pre><code><span class="cm"># Accès aux données</span>
+close <span class="op">=</span> df[<span class="str">"close"</span>]
+high  <span class="op">=</span> df[<span class="str">"high"</span>]
+
+<span class="cm"># Filtrer par date</span>
+df_2024 <span class="op">=</span> df[<span class="str">"2024-01-01"</span>:<span class="str">"2024-12-31"</span>]
+
+<span class="cm"># Vérifier le timezone</span>
+<span class="nb">print</span>(df.index.tz)  <span class="cm"># UTC</span></code></pre>
+
+  <!-- ══ Écrire une stratégie ══ -->
+  <h2 id="ex-strategy">Écrire une stratégie compatible</h2>
+
+  <p>
+    <code>TradingSimulator</code> délègue la préparation des données et la génération des signaux à
+    un objet <code>strategy</code>. Celui-ci doit implémenter deux méthodes :
+  </p>
+
+  <h3>Interface attendue</h3>
+  <pre><code><span class="kw">class</span> <span class="cls">MyStrategy</span>:
+    name <span class="op">=</span> <span class="str">"MyStrategy"</span>  <span class="cm"># Utilisé pour nommer les fichiers .pkl</span>
+
+    <span class="kw">def</span> <span class="fn">prepare_data</span>(<span class="cls">self</span>, data_dict: <span class="nb">dict</span>, symbol: <span class="nb">str</span>):
+        <span class="str">"""
+        Prépare et enrichit le DataFrame pour un symbole donné.
+
+        Paramètres :
+          data_dict : dict {symbol: DataFrame} retourné par DataManager
+          symbol    : paire courante ex "BTC/USDT"
+
+        Doit retourner : (data, asset_name)
+          data       : pd.DataFrame avec au moins une colonne nommée asset_name
+          asset_name : str, nom de la colonne prix (ex "BTC")
+        """</span>
+        df <span class="op">=</span> data_dict[symbol].copy()
+        asset_name <span class="op">=</span> symbol.split(<span class="str">"/"</span>)[<span class="nb">0</span>]
+        df[asset_name] <span class="op">=</span> df[<span class="str">"close"</span>]
+        <span class="kw">return</span> df, asset_name
+
+    <span class="kw">def</span> <span class="fn">generate_signals</span>(<span class="cls">self</span>, data: pd.DataFrame, asset_name: <span class="nb">str</span>, params: <span class="nb">dict</span>):
+        <span class="str">"""
+        Génère les signaux d'entrée/sortie.
+
+        Doit retourner un tuple de 3 ou 5 éléments :
+          (data, entries, exits)                              — long only
+          (data, entries, exits, short_entries, short_exits)  — long + short
+
+        entries / exits : pd.Series ou pd.DataFrame de booléens,
+                          indexés comme data.
+        """</span>
+        close <span class="op">=</span> data[asset_name]
+        sma20 <span class="op">=</span> close.rolling(<span class="nb">20</span>).mean()
+        sma50 <span class="op">=</span> close.rolling(<span class="nb">50</span>).mean()
+
+        entries <span class="op">=</span> (sma20 <span class="op">&gt;</span> sma50) <span class="op">&</span> (sma20.shift(<span class="nb">1</span>) <span class="op">&lt;=</span> sma50.shift(<span class="nb">1</span>))
+        exits   <span class="op">=</span> (sma20 <span class="op">&lt;</span> sma50) <span class="op">&</span> (sma20.shift(<span class="nb">1</span>) <span class="op">&gt;=</span> sma50.shift(<span class="nb">1</span>))
+
+        <span class="kw">return</span> data, entries, exits</code></pre>
+
+  <div class="note">
+    <strong>Convention de nommage des colonnes</strong>
+    Le simulateur cherche une colonne dont le nom est <code>asset_name</code> (ex : <code>"BTC"</code>) dans le DataFrame.
+    Si elle est absente, il replie sur <code>"close"</code>. Assure-toi que <code>prepare_data</code> crée cette colonne.
+  </div>
+
+  <div class="note">
+    <strong>Signaux booléens</strong>
+    <code>entries</code> et <code>exits</code> peuvent être des <code>pd.Series</code>, <code>pd.DataFrame</code> ou des arrays numpy.
+    La méthode interne <code>_to_bool_frame</code> les normalise automatiquement.
+  </div>
+
+</main>
+</body>
+</html>

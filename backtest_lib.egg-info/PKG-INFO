@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: backtest-lib
+Version: 0.1.0
+Requires-Python: >=3.10
+Requires-Dist: ccxt
+Requires-Dist: pandas
+Requires-Dist: pyarrow
+Requires-Dist: vectorbt
+Requires-Dist: matplotlib
+Requires-Dist: numpy

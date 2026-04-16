@@ -1,0 +1,10 @@
+README.md
+backtest_analysis.py
+backtest_vectorbt.py
+data_manager.py
+pyproject.toml
+backtest_lib.egg-info/PKG-INFO
+backtest_lib.egg-info/SOURCES.txt
+backtest_lib.egg-info/dependency_links.txt
+backtest_lib.egg-info/requires.txt
+backtest_lib.egg-info/top_level.txt

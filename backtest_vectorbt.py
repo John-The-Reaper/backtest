@@ -75,9 +75,9 @@ class TradingSimulator:
             else:
                 raise ValueError(f"Colonne {asset_name} absente de data")
 
-        close = data[asset_name].astype(float)
+        load_from_file = os.path.exists(portfolio_path) and not reload
 
-        if os.path.exists(portfolio_path) and not reload:
+        if load_from_file:
             pf = vbt.Portfolio.load(portfolio_path)
         else:
             signals = self.strategy.generate_signals(data, asset_name, params)
@@ -94,7 +94,9 @@ class TradingSimulator:
             else:
                 raise ValueError("generate_signals doit retourner 3 ou 5 elements")
 
-            close = data[asset_name].astype(float)
+        close = data[asset_name].astype(float)
+
+        if not load_from_file:
             entries_df = self._to_bool_frame(entries_df, asset_name, close.index)
             exits_df = self._to_bool_frame(exits_df, asset_name, close.index)
 
@@ -113,6 +115,10 @@ class TradingSimulator:
                 short_exits_df = self._to_bool_frame(short_exits_df, asset_name, close.index)
                 kwargs["short_entries"] = short_entries_df[asset_name]
                 kwargs["short_exits"] = short_exits_df[asset_name]
+
+            size = getattr(self.strategy, "_size", None)
+            if size is not None:
+                kwargs["size"] = size.reindex(close.index).ffill().bfill().values
 
             pf = vbt.Portfolio.from_signals(**kwargs)
             pf.save(portfolio_path)
@@ -137,14 +143,12 @@ class TradingSimulator:
 
         return {"symbol": symbol, "portfolio_data": result}
 
-    def run_batch_simulations(self, symbols, data_dict, params=None, reload=False):
+    def run_batch_simulations(self, symbols, data_dict, params=None, reload=False, max_workers=None):
         if params is None:
             params = self.config.default_params
-        start = perf_counter()
-        print("Avant")
         results = {}
         portfolios_data = {}
-        with concurrent.futures.ProcessPoolExecutor(max_workers=18) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(self.run_simulation, symbol=symbol, data_dict=data_dict, params=params, reload=reload): symbol
                 for symbol in symbols
@@ -157,9 +161,6 @@ class TradingSimulator:
                     portfolios_data[symbol] = res["portfolio_data"]
                 except Exception as e:
                     print(f"Erreur lors de la simulation pour {symbol}: {e}")
-
-        print("Après")
-        print(perf_counter() - start)
 
         return results, portfolios_data
 
@@ -208,5 +209,4 @@ class TradingSimulator:
             eq_path = output_path.replace(".json", "_equity_curves.csv")
             eq_df.to_csv(eq_path)
 
-        print(f"Resultats exportes: {output_path}")
         print(f"Resultats exportes: {output_path}")

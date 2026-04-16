@@ -1,0 +1,6 @@
+ccxt
+pandas
+pyarrow
+vectorbt
+matplotlib
+numpy

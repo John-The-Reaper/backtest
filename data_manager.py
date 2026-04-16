@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Union
 import ccxt
 import pandas as pd
 import pyarrow.feather as feather
+from tqdm import tqdm
 
 
 class DataManager:
@@ -117,28 +118,31 @@ class DataManager:
                 sleep_s = min(8.0, 0.5 * (2 ** attempt))
                 time.sleep(sleep_s)
 
-    def _download_chunk(self, exchange, symbol: str, timeframe: str, start_ms: int, end_ms: int) -> pd.DataFrame:
+    def _download_chunk(self, exchange, symbol: str, timeframe: str, start_ms: int, end_ms: int, desc: str = "") -> pd.DataFrame:
         """Telecharge un intervalle [start_ms, end_ms] via pagination ccxt."""
         rows: List[List[float]] = []
         since = int(start_ms)
         limit = 1000
         tf_ms = int(exchange.parse_timeframe(timeframe) * 1000)
+        estimated_pages = max(1, (end_ms - start_ms) // (limit * tf_ms))
 
-        while since <= end_ms:
-            candles = self._fetch_ohlcv_with_retry(exchange, symbol, timeframe, since, limit)
-            if not candles:
-                break
+        with tqdm(total=estimated_pages, desc=desc or symbol, unit="page", leave=False) as pbar:
+            while since <= end_ms:
+                candles = self._fetch_ohlcv_with_retry(exchange, symbol, timeframe, since, limit)
+                if not candles:
+                    break
 
-            valid = [c for c in candles if c[0] <= end_ms]
-            if valid:
-                rows.extend(valid)
+                valid = [c for c in candles if c[0] <= end_ms]
+                if valid:
+                    rows.extend(valid)
 
-            last_ts = candles[-1][0]
-            if last_ts >= end_ms:
-                break
+                last_ts = candles[-1][0]
+                pbar.update(1)
+                if last_ts >= end_ms:
+                    break
 
-            # Avance propre d'un pas de timeframe pour eviter chevauchement/duplication excessive.
-            since = int(last_ts) + tf_ms
+                # Avance propre d'un pas de timeframe pour eviter chevauchement/duplication excessive.
+                since = int(last_ts) + tf_ms
 
         if not rows:
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -146,6 +150,18 @@ class DataManager:
         df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp")
         return df
+
+    @staticmethod
+    def _cache_covers(cache_df: pd.DataFrame, start_ms: int, end_ms: int, tolerance_ms: int = 0) -> bool:
+        """
+        Retourne True si le cache couvre integralement la plage [start_ms, end_ms].
+
+        `tolerance_ms` permet d'ignorer un ecart en fin de plage (ex: bougie en cours non fermee).
+        Typiquement passe a tf_ms pour fetch_symbol, 0 pour fetch_symbol_range.
+        """
+        if cache_df.empty:
+            return False
+        return int(cache_df["timestamp"].min()) <= start_ms and int(cache_df["timestamp"].max()) >= end_ms - tolerance_ms
 
     def _load_cache(self, symbol: str, timeframe: str) -> pd.DataFrame:
         path = self._cache_path(symbol, timeframe)
@@ -161,13 +177,11 @@ class DataManager:
 
         df["timestamp"] = df["timestamp"].astype("int64")
         df = df[["timestamp", "open", "high", "low", "close", "volume"]]
-        df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp")
         return df
 
     def _save_cache(self, symbol: str, timeframe: str, df: pd.DataFrame) -> None:
         path = self._cache_path(symbol, timeframe)
-        out = df[["timestamp", "open", "high", "low", "close", "volume"]].copy()
-        out = out.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+        out = df[["timestamp", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
         feather.write_feather(out, path)
 
     @staticmethod
@@ -237,8 +251,15 @@ class DataManager:
 
         start_ms = int(start_utc.timestamp() * 1000)
         end_ms = int(now_utc.timestamp() * 1000)
+        tf_ms = int(exchange.parse_timeframe(timeframe) * 1000)
 
         cache_df = self._load_cache(symbol, timeframe)
+
+        if self._cache_covers(cache_df, start_ms, end_ms, tolerance_ms=tf_ms):
+            window_df = cache_df[(cache_df["timestamp"] >= start_ms) & (cache_df["timestamp"] <= end_ms)].copy()
+            window_df["timestamp"] = pd.to_datetime(window_df["timestamp"], unit="ms", utc=True)
+            return window_df.set_index("timestamp")
+
         pieces: List[pd.DataFrame] = []
 
         if cache_df.empty:
@@ -263,8 +284,7 @@ class DataManager:
 
         window_df = full_df[(full_df["timestamp"] >= start_ms) & (full_df["timestamp"] <= end_ms)].copy()
         window_df["timestamp"] = pd.to_datetime(window_df["timestamp"], unit="ms", utc=True)
-        window_df = window_df.set_index("timestamp")
-        return window_df
+        return window_df.set_index("timestamp")
 
     def fetch_symbol_range(
         self,
@@ -286,6 +306,12 @@ class DataManager:
             raise ValueError(f"Plage invalide pour {symbol}: start >= end")
 
         cache_df = self._load_cache(symbol, timeframe)
+
+        if self._cache_covers(cache_df, start_ms, end_ms):
+            window_df = cache_df[(cache_df["timestamp"] >= start_ms) & (cache_df["timestamp"] <= end_ms)].copy()
+            window_df["timestamp"] = pd.to_datetime(window_df["timestamp"], unit="ms", utc=True)
+            return window_df.set_index("timestamp")
+
         pieces: List[pd.DataFrame] = []
 
         if cache_df.empty:
@@ -310,8 +336,7 @@ class DataManager:
 
         window_df = full_df[(full_df["timestamp"] >= start_ms) & (full_df["timestamp"] <= end_ms)].copy()
         window_df["timestamp"] = pd.to_datetime(window_df["timestamp"], unit="ms", utc=True)
-        window_df = window_df.set_index("timestamp")
-        return window_df
+        return window_df.set_index("timestamp")
 
     def load_symbol_from_feather(
         self,
@@ -353,6 +378,7 @@ class DataManager:
         end: Union[str, int, float, datetime],
         file_path: Optional[str] = None,
         prefer_file: bool = True,
+        exchange_override=None,
     ) -> pd.DataFrame:
         """
         Charge un Feather local si disponible, sinon telecharge via l'exchange.
@@ -372,6 +398,7 @@ class DataManager:
             timeframe=timeframe,
             start=start,
             end=end,
+            exchange_override=exchange_override,
         )
 
     def download_period(
@@ -388,7 +415,7 @@ class DataManager:
 
         if max_workers <= 1:
             data: Dict[str, pd.DataFrame] = {}
-            for symbol in symbols:
+            for symbol in tqdm(symbols, desc="Téléchargement", unit="symbole"):
                 data[symbol] = self.fetch_symbol(
                     symbol=symbol,
                     timeframe=timeframe,
@@ -399,6 +426,7 @@ class DataManager:
 
         # Parallelisation I/O: chaque thread construit son instance exchange.
         results: Dict[str, pd.DataFrame] = {}
+        errors: Dict[str, Exception] = {}
 
         def _worker(sym: str):
             local_exchange = self._build_exchange()
@@ -411,10 +439,21 @@ class DataManager:
             )
 
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = [ex.submit(_worker, s) for s in symbols]
-            for fut in as_completed(futures):
-                sym, df = fut.result()
-                results[sym] = df
+            futures = {ex.submit(_worker, s): s for s in symbols}
+            with tqdm(total=len(symbols), desc="Téléchargement", unit="symbole") as pbar:
+                for fut in as_completed(futures):
+                    sym = futures[fut]
+                    try:
+                        _, df = fut.result()
+                        results[sym] = df
+                    except Exception as e:
+                        errors[sym] = e
+                        tqdm.write(f"[ERREUR] {sym}: {e}")
+                    pbar.update(1)
+
+        if errors:
+            failed = ", ".join(errors)
+            raise RuntimeError(f"Echec pour {len(errors)} symbole(s): {failed}")
 
         # Preserve input order
         return {s: results[s] for s in symbols if s in results}
@@ -433,7 +472,7 @@ class DataManager:
 
         if max_workers <= 1:
             data: Dict[str, pd.DataFrame] = {}
-            for symbol in symbols:
+            for symbol in tqdm(symbols, desc="Téléchargement", unit="symbole"):
                 data[symbol] = self.fetch_symbol_range(
                     symbol=symbol,
                     timeframe=timeframe,
@@ -444,6 +483,7 @@ class DataManager:
             return data
 
         results: Dict[str, pd.DataFrame] = {}
+        errors: Dict[str, Exception] = {}
 
         def _worker(sym: str):
             local_exchange = self._build_exchange()
@@ -457,10 +497,21 @@ class DataManager:
             )
 
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = [ex.submit(_worker, s) for s in symbols]
-            for fut in as_completed(futures):
-                sym, df = fut.result()
-                results[sym] = df
+            futures = {ex.submit(_worker, s): s for s in symbols}
+            with tqdm(total=len(symbols), desc="Téléchargement", unit="symbole") as pbar:
+                for fut in as_completed(futures):
+                    sym = futures[fut]
+                    try:
+                        _, df = fut.result()
+                        results[sym] = df
+                    except Exception as e:
+                        errors[sym] = e
+                        tqdm.write(f"[ERREUR] {sym}: {e}")
+                    pbar.update(1)
+
+        if errors:
+            failed = ", ".join(errors)
+            raise RuntimeError(f"Echec pour {len(errors)} symbole(s): {failed}")
 
         return {s: results[s] for s in symbols if s in results}
 
@@ -484,7 +535,7 @@ class DataManager:
 
         if max_workers <= 1:
             data: Dict[str, pd.DataFrame] = {}
-            for symbol in symbols:
+            for symbol in tqdm(symbols, desc="Chargement", unit="symbole"):
                 data[symbol] = self.load_or_fetch_symbol_range(
                     symbol=symbol,
                     timeframe=timeframe,
@@ -496,8 +547,10 @@ class DataManager:
             return data
 
         results: Dict[str, pd.DataFrame] = {}
+        errors: Dict[str, Exception] = {}
 
         def _worker(sym: str):
+            local_exchange = self._build_exchange()
             return sym, self.load_or_fetch_symbol_range(
                 symbol=sym,
                 timeframe=timeframe,
@@ -505,14 +558,24 @@ class DataManager:
                 end=end,
                 file_path=file_map.get(sym),
                 prefer_file=prefer_file,
+                exchange_override=local_exchange,
             )
 
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = [ex.submit(_worker, s) for s in symbols]
-            for fut in as_completed(futures):
-                sym, df = fut.result()
-                results[sym] = df
+            futures = {ex.submit(_worker, s): s for s in symbols}
+            with tqdm(total=len(symbols), desc="Chargement", unit="symbole") as pbar:
+                for fut in as_completed(futures):
+                    sym = futures[fut]
+                    try:
+                        _, df = fut.result()
+                        results[sym] = df
+                    except Exception as e:
+                        errors[sym] = e
+                        tqdm.write(f"[ERREUR] {sym}: {e}")
+                    pbar.update(1)
+
+        if errors:
+            failed = ", ".join(errors)
+            raise RuntimeError(f"Echec pour {len(errors)} symbole(s): {failed}")
 
         return {s: results[s] for s in symbols if s in results}
-
-        
