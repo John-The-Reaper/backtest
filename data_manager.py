@@ -10,7 +10,14 @@ from typing import Dict, List, Optional, Union
 import ccxt
 import pandas as pd
 import pyarrow.feather as feather
-from tqdm import tqdm
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 
 class DataManager:
@@ -23,16 +30,60 @@ class DataManager:
         ccxt.ExchangeNotAvailable,
     )
 
-    def __init__(self, exchange_name: str = "binance", data_dir: str = "data") -> None:
-        self.exchange_name = exchange_name
+    # Ordre de preference pour le mode auto (exchange_name=None)
+    FALLBACK_EXCHANGES = ["binance", "bybit", "kraken", "okx", "coinbase", "kucoin"]
+
+    def __init__(self, exchange_name: Optional[str] = None, data_dir: str = "data") -> None:
+        self._auto_mode = exchange_name is None
+        self.exchange_name = exchange_name or self.FALLBACK_EXCHANGES[0]
         self.exchange = self._build_exchange()
         self.data_dir = data_dir
-        self.cache_dir = os.path.join(data_dir, "cache")
-        os.makedirs(self.cache_dir, exist_ok=True)
+        os.makedirs(self.data_dir, exist_ok=True)
         self._markets = None
+        # Cache: symbol -> exchange instance resolue en mode auto
+        self._symbol_exchange_cache: Dict[str, ccxt.Exchange] = {}
 
-    def _build_exchange(self):
-        return getattr(ccxt, self.exchange_name)({"enableRateLimit": True})
+    def _build_exchange(self, name: str = None) -> ccxt.Exchange:
+        return getattr(ccxt, name or self.exchange_name)({"enableRateLimit": True})
+
+    def _resolve_exchange_for_symbol(self, symbol: str) -> ccxt.Exchange:
+        """
+        Retourne l'exchange a utiliser pour ce symbole.
+        En mode normal: retourne self.exchange.
+        En mode auto: teste les exchanges dans FALLBACK_EXCHANGES et retourne le premier
+        qui supporte le symbole (spot, actif). Le resultat est mis en cache.
+        """
+        if not self._auto_mode:
+            return self.exchange
+
+        if symbol in self._symbol_exchange_cache:
+            return self._symbol_exchange_cache[symbol]
+
+        last_exc: Optional[Exception] = None
+        for name in self.FALLBACK_EXCHANGES:
+            try:
+                ex = self._build_exchange(name)
+                markets = ex.load_markets()
+                market = markets.get(symbol)
+                if (market is not None
+                        and market.get("active") is not False
+                        and market.get("spot") is not False):
+                    self._symbol_exchange_cache[symbol] = ex
+                    return ex
+            except Exception as e:
+                last_exc = e
+                continue
+
+        raise ValueError(
+            f"Symbole {symbol} introuvable sur tous les exchanges: {self.FALLBACK_EXCHANGES}"
+        ) from last_exc
+
+    def _ensure_symbol_valid(self, symbol: str) -> None:
+        """Valide le symbole. En mode auto, resout et cache l'exchange associe."""
+        if self._auto_mode:
+            self._resolve_exchange_for_symbol(symbol)
+        else:
+            self._validate_symbol(symbol)
 
     @staticmethod
     def parse_duration(duration: str) -> timedelta:
@@ -66,13 +117,18 @@ class DataManager:
         raise ValueError(f"Unite de duree non supportee: {unit}")
 
     @staticmethod
+    def _make_progress() -> Progress:
+        return Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]{task.description:<30}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+        )
+
+    @staticmethod
     def _sanitize_symbol(symbol: str) -> str:
         return symbol.replace("/", "_").replace(":", "_")
-
-    def _cache_path(self, symbol: str, timeframe: str) -> str:
-        safe_symbol = self._sanitize_symbol(symbol)
-        safe_tf = timeframe.replace("/", "_")
-        return os.path.join(self.cache_dir, f"{safe_symbol}_{safe_tf}_cache.feather")
 
     def _data_file_path(self, symbol: str, timeframe: str) -> str:
         safe_symbol = self._sanitize_symbol(symbol)
@@ -117,32 +173,34 @@ class DataManager:
                     raise
                 sleep_s = min(8.0, 0.5 * (2 ** attempt))
                 time.sleep(sleep_s)
+        return []
 
-    def _download_chunk(self, exchange, symbol: str, timeframe: str, start_ms: int, end_ms: int, desc: str = "") -> pd.DataFrame:
+    def _download_chunk(self, exchange, symbol: str, timeframe: str, start_ms: int, end_ms: int) -> pd.DataFrame:
         """Telecharge un intervalle [start_ms, end_ms] via pagination ccxt."""
         rows: List[List[float]] = []
         since = int(start_ms)
         limit = 1000
         tf_ms = int(exchange.parse_timeframe(timeframe) * 1000)
-        estimated_pages = max(1, (end_ms - start_ms) // (limit * tf_ms))
 
-        with tqdm(total=estimated_pages, desc=desc or symbol, unit="page", leave=False) as pbar:
-            while since <= end_ms:
-                candles = self._fetch_ohlcv_with_retry(exchange, symbol, timeframe, since, limit)
-                if not candles:
-                    break
+        while since <= end_ms:
+            candles = self._fetch_ohlcv_with_retry(exchange, symbol, timeframe, since, limit)
+            if not candles:
+                break
 
-                valid = [c for c in candles if c[0] <= end_ms]
-                if valid:
-                    rows.extend(valid)
+            valid = [c for c in candles if c[0] <= end_ms]
+            if valid:
+                rows.extend(valid)
 
-                last_ts = candles[-1][0]
-                pbar.update(1)
-                if last_ts >= end_ms:
-                    break
+            last_ts = candles[-1][0]
+            if last_ts >= end_ms:
+                break
 
-                # Avance propre d'un pas de timeframe pour eviter chevauchement/duplication excessive.
-                since = int(last_ts) + tf_ms
+            if last_ts < since:
+                # Protection contre boucle infinie si l'exchange renvoie des timestamps en arriere.
+                break
+
+            # Avance propre d'un pas de timeframe pour eviter chevauchement/duplication excessive.
+            since = int(last_ts) + tf_ms
 
         if not rows:
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -164,7 +222,7 @@ class DataManager:
         return int(cache_df["timestamp"].min()) <= start_ms and int(cache_df["timestamp"].max()) >= end_ms - tolerance_ms
 
     def _load_cache(self, symbol: str, timeframe: str) -> pd.DataFrame:
-        path = self._cache_path(symbol, timeframe)
+        path = self._data_file_path(symbol, timeframe)
         if not os.path.exists(path):
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
@@ -180,7 +238,7 @@ class DataManager:
         return df
 
     def _save_cache(self, symbol: str, timeframe: str, df: pd.DataFrame) -> None:
-        path = self._cache_path(symbol, timeframe)
+        path = self._data_file_path(symbol, timeframe)
         out = df[["timestamp", "open", "high", "low", "close", "volume"]].reset_index(drop=True)
         feather.write_feather(out, path)
 
@@ -242,10 +300,11 @@ class DataManager:
         validate_symbol: bool = True,
     ) -> pd.DataFrame:
         """Retourne un DataFrame indexe par timestamp pour la duree demandee."""
-        if validate_symbol:
+        if validate_symbol and not self._auto_mode:
             self._validate_symbol(symbol)
 
-        exchange = exchange_override or self.exchange
+        exchange = exchange_override or self._resolve_exchange_for_symbol(symbol)
+
         now_utc = datetime.now(timezone.utc)
         start_utc = now_utc - self.parse_duration(duration)
 
@@ -296,10 +355,11 @@ class DataManager:
         validate_symbol: bool = True,
     ) -> pd.DataFrame:
         """Retourne un DataFrame indexe par timestamp pour une plage [start, end]."""
-        if validate_symbol:
+        if validate_symbol and not self._auto_mode:
             self._validate_symbol(symbol)
 
-        exchange = exchange_override or self.exchange
+        exchange = exchange_override or self._resolve_exchange_for_symbol(symbol)
+
         start_ms = self._to_timestamp_ms(start)
         end_ms = self._to_timestamp_ms(end)
         if start_ms >= end_ms:
@@ -399,7 +459,14 @@ class DataManager:
             start=start,
             end=end,
             exchange_override=exchange_override,
+            validate_symbol=False,
         )
+
+    def _build_worker_exchange(self, symbol: str) -> ccxt.Exchange:
+        """Construit une instance exchange locale pour un worker parallele."""
+        if self._auto_mode and symbol in self._symbol_exchange_cache:
+            return self._build_exchange(self._symbol_exchange_cache[symbol].id)
+        return self._build_exchange()
 
     def download_period(
         self,
@@ -409,19 +476,22 @@ class DataManager:
         max_workers: int = 1,
     ) -> Dict[str, pd.DataFrame]:
         """Telecharge la periode demandee pour tous les symboles crypto."""
-        # Validation upfront (une seule fois).
         for symbol in symbols:
-            self._validate_symbol(symbol)
+            self._ensure_symbol_valid(symbol)
 
         if max_workers <= 1:
             data: Dict[str, pd.DataFrame] = {}
-            for symbol in tqdm(symbols, desc="Téléchargement", unit="symbole"):
-                data[symbol] = self.fetch_symbol(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    duration=duration,
-                    validate_symbol=False,
-                )
+            with self._make_progress() as progress:
+                task = progress.add_task("Téléchargement", total=len(symbols))
+                for symbol in symbols:
+                    progress.update(task, description=symbol)
+                    data[symbol] = self.fetch_symbol(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        duration=duration,
+                        validate_symbol=False,
+                    )
+                    progress.advance(task)
             return data
 
         # Parallelisation I/O: chaque thread construit son instance exchange.
@@ -429,7 +499,7 @@ class DataManager:
         errors: Dict[str, Exception] = {}
 
         def _worker(sym: str):
-            local_exchange = self._build_exchange()
+            local_exchange = self._build_worker_exchange(sym)
             return sym, self.fetch_symbol(
                 sym,
                 timeframe,
@@ -438,9 +508,10 @@ class DataManager:
                 validate_symbol=False,
             )
 
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = {ex.submit(_worker, s): s for s in symbols}
-            with tqdm(total=len(symbols), desc="Téléchargement", unit="symbole") as pbar:
+        with self._make_progress() as progress:
+            task = progress.add_task("Téléchargement", total=len(symbols))
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = {ex.submit(_worker, s): s for s in symbols}
                 for fut in as_completed(futures):
                     sym = futures[fut]
                     try:
@@ -448,8 +519,8 @@ class DataManager:
                         results[sym] = df
                     except Exception as e:
                         errors[sym] = e
-                        tqdm.write(f"[ERREUR] {sym}: {e}")
-                    pbar.update(1)
+                        progress.console.print(f"[red][ERREUR][/red] {sym}: {e}")
+                    progress.advance(task)
 
         if errors:
             failed = ", ".join(errors)
@@ -468,25 +539,29 @@ class DataManager:
     ) -> Dict[str, pd.DataFrame]:
         """Telecharge les donnees pour une plage [start, end] pour tous les symboles."""
         for symbol in symbols:
-            self._validate_symbol(symbol)
+            self._ensure_symbol_valid(symbol)
 
         if max_workers <= 1:
             data: Dict[str, pd.DataFrame] = {}
-            for symbol in tqdm(symbols, desc="Téléchargement", unit="symbole"):
-                data[symbol] = self.fetch_symbol_range(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    start=start,
-                    end=end,
-                    validate_symbol=False,
-                )
+            with self._make_progress() as progress:
+                task = progress.add_task("Téléchargement", total=len(symbols))
+                for symbol in symbols:
+                    progress.update(task, description=symbol)
+                    data[symbol] = self.fetch_symbol_range(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        start=start,
+                        end=end,
+                        validate_symbol=False,
+                    )
+                    progress.advance(task)
             return data
 
         results: Dict[str, pd.DataFrame] = {}
         errors: Dict[str, Exception] = {}
 
         def _worker(sym: str):
-            local_exchange = self._build_exchange()
+            local_exchange = self._build_worker_exchange(sym)
             return sym, self.fetch_symbol_range(
                 symbol=sym,
                 timeframe=timeframe,
@@ -496,9 +571,10 @@ class DataManager:
                 validate_symbol=False,
             )
 
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = {ex.submit(_worker, s): s for s in symbols}
-            with tqdm(total=len(symbols), desc="Téléchargement", unit="symbole") as pbar:
+        with self._make_progress() as progress:
+            task = progress.add_task("Téléchargement", total=len(symbols))
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = {ex.submit(_worker, s): s for s in symbols}
                 for fut in as_completed(futures):
                     sym = futures[fut]
                     try:
@@ -506,8 +582,8 @@ class DataManager:
                         results[sym] = df
                     except Exception as e:
                         errors[sym] = e
-                        tqdm.write(f"[ERREUR] {sym}: {e}")
-                    pbar.update(1)
+                        progress.console.print(f"[red][ERREUR][/red] {sym}: {e}")
+                    progress.advance(task)
 
         if errors:
             failed = ", ".join(errors)
@@ -533,24 +609,35 @@ class DataManager:
         """
         file_map = file_map or {}
 
+        # Pre-validation: resout l'exchange en mode auto, valide en mode normal.
+        # On ne valide que les symboles qui necessiteront un telechargement.
+        for symbol in symbols:
+            candidate = file_map.get(symbol) or self._data_file_path(symbol, timeframe)
+            if not (prefer_file and os.path.exists(candidate)):
+                self._ensure_symbol_valid(symbol)
+
         if max_workers <= 1:
             data: Dict[str, pd.DataFrame] = {}
-            for symbol in tqdm(symbols, desc="Chargement", unit="symbole"):
-                data[symbol] = self.load_or_fetch_symbol_range(
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    start=start,
-                    end=end,
-                    file_path=file_map.get(symbol),
-                    prefer_file=prefer_file,
-                )
+            with self._make_progress() as progress:
+                task = progress.add_task("Chargement", total=len(symbols))
+                for symbol in symbols:
+                    progress.update(task, description=symbol)
+                    data[symbol] = self.load_or_fetch_symbol_range(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        start=start,
+                        end=end,
+                        file_path=file_map.get(symbol),
+                        prefer_file=prefer_file,
+                    )
+                    progress.advance(task)
             return data
 
         results: Dict[str, pd.DataFrame] = {}
         errors: Dict[str, Exception] = {}
 
         def _worker(sym: str):
-            local_exchange = self._build_exchange()
+            local_exchange = self._build_worker_exchange(sym)
             return sym, self.load_or_fetch_symbol_range(
                 symbol=sym,
                 timeframe=timeframe,
@@ -561,9 +648,10 @@ class DataManager:
                 exchange_override=local_exchange,
             )
 
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = {ex.submit(_worker, s): s for s in symbols}
-            with tqdm(total=len(symbols), desc="Chargement", unit="symbole") as pbar:
+        with self._make_progress() as progress:
+            task = progress.add_task("Chargement", total=len(symbols))
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = {ex.submit(_worker, s): s for s in symbols}
                 for fut in as_completed(futures):
                     sym = futures[fut]
                     try:
@@ -571,8 +659,8 @@ class DataManager:
                         results[sym] = df
                     except Exception as e:
                         errors[sym] = e
-                        tqdm.write(f"[ERREUR] {sym}: {e}")
-                    pbar.update(1)
+                        progress.console.print(f"[red][ERREUR][/red] {sym}: {e}")
+                    progress.advance(task)
 
         if errors:
             failed = ", ".join(errors)

@@ -38,6 +38,7 @@ class BacktestAnalyzer:
         if os.path.exists(self._equity_curves_path):
             df = pd.read_csv(self._equity_curves_path, index_col=0, parse_dates=True)
             if not df.empty:
+                df = df.ffill().bfill()
                 return df
         return None
 
@@ -105,6 +106,13 @@ class BacktestAnalyzer:
             0.0,
         )
 
+        # Calmar ratio : rendement annualise / |max drawdown|
+        df["calmar_ratio"] = np.where(
+            df["max_drawdown"] != 0,
+            df["annualized_return"] / df["max_drawdown"].abs(),
+            0.0,
+        )
+
         df = df.sort_values(by="total_return", ascending=False).reset_index(drop=True)
         return df
 
@@ -141,6 +149,8 @@ class BacktestAnalyzer:
             "sharpe_moyen": round(df["sharpe_ratio"].mean(), 3),
             "sharpe_median": round(df["sharpe_ratio"].median(), 3),
             "sharpe_std": round(df["sharpe_ratio"].std(), 3),
+            "calmar_moyen": round(df["calmar_ratio"].mean(), 3),
+            "calmar_median": round(df["calmar_ratio"].median(), 3),
             "beta_moyen": round(df["beta_underlying"].mean(), 3),
             "beta_median": round(df["beta_underlying"].median(), 3),
             "beta_std": round(df["beta_underlying"].std(), 3),
@@ -173,6 +183,10 @@ class BacktestAnalyzer:
         ax.axvline(0, color="black", linewidth=0.8)
         ax.grid(axis="x", alpha=0.3)
         ax.invert_yaxis()
+        for i, val in enumerate(df["return_pct"]):
+            offset = 0.4 if val >= 0 else -0.4
+            ha = "left" if val >= 0 else "right"
+            ax.text(val + offset, i, f"{val:.1f}%", va="center", ha=ha, fontsize=8)
         plt.tight_layout()
         plt.savefig(os.path.join(self.graphs_dir, "rendement_par_asset.png"), dpi=140)
         plt.close()
@@ -271,13 +285,13 @@ class BacktestAnalyzer:
         plt.savefig(os.path.join(self.graphs_dir, "equity_curves_individual.png"), dpi=140)
         plt.close()
 
-        # 2) Courbe globale
-        global_eq = eq_df.sum(axis=1)
+        # 2) Courbe globale (moyenne equal-weight)
+        global_eq = eq_df.mean(axis=1)
         global_norm = global_eq / global_eq.iloc[0] - 1.0
 
         fig, ax = plt.subplots(figsize=(14, 6))
         ax.plot(global_norm.index, global_norm.values, color="black", linewidth=1.4)
-        ax.set_title("Equity Curve Globale (somme des portefeuilles)")
+        ax.set_title("Equity Curve Globale (moyenne equal-weight)")
         ax.set_xlabel("Date")
         ax.set_ylabel("Performance cumulee")
         ax.grid(alpha=0.3)
@@ -301,13 +315,17 @@ class BacktestAnalyzer:
 
     def _plot_heatmap_metrics(self, df: pd.DataFrame) -> None:
         """Heatmap des metriques cles par asset."""
-        cols = ["return_pct", "annualized_pct", "sharpe_ratio", "beta_underlying", "max_dd_pct", "win_rate_pct"]
-        labels = ["Return %", "Ann. Return %", "Sharpe", "Beta", "Max DD %", "Win Rate %"]
+        cols = ["return_pct", "annualized_pct", "sharpe_ratio", "calmar_ratio", "reward_risk", "max_dd_pct", "win_rate_pct", "beta_underlying"]
+        labels = ["Return %", "Ann. Return %", "Sharpe", "Calmar", "Reward/Risk", "Max DD %", "Win Rate %", "Beta"]
         hm_df = df.set_index("symbol")[cols].copy()
         hm_df.columns = labels
 
-        # Normalisation min-max par colonne pour la colormap
+        # Normalisation min-max par colonne pour la colormap.
+        # Max DD % : valeurs negatives, min = pire → normalisation directe ok (pire=0=rouge).
+        # Beta : colonne neutre, on l'inverse pour que beta proche de 0 soit vert.
         hm_norm = (hm_df - hm_df.min()) / (hm_df.max() - hm_df.min() + 1e-9)
+        beta_col = labels.index("Beta")
+        hm_norm.iloc[:, beta_col] = 1.0 - hm_norm.iloc[:, beta_col]
 
         fig, ax = plt.subplots(figsize=(10, max(6, len(df) * 0.35)))
         im = ax.imshow(hm_norm.values, aspect="auto", cmap="RdYlGn", interpolation="nearest")
@@ -340,14 +358,16 @@ class BacktestAnalyzer:
 
         # Tableau par asset
         display_cols = [
-            "symbol", "return_pct", "annualized_pct", "sharpe_ratio",
-            "beta_underlying", "max_dd_pct", "win_rate_pct", "trade_count", "final_value",
+            "symbol", "return_pct", "annualized_pct", "sharpe_ratio", "calmar_ratio",
+            "reward_risk", "beta_underlying", "max_dd_pct", "win_rate_pct", "trade_count", "final_value",
         ]
         display_names = {
             "symbol": "Symbol",
             "return_pct": "Return %",
             "annualized_pct": "Ann. Ret %",
             "sharpe_ratio": "Sharpe",
+            "calmar_ratio": "Calmar",
+            "reward_risk": "Rew/Risk",
             "beta_underlying": "Beta",
             "max_dd_pct": "Max DD %",
             "win_rate_pct": "Win Rate %",
@@ -355,7 +375,7 @@ class BacktestAnalyzer:
             "final_value": "Final Value",
         }
         table = df[display_cols].rename(columns=display_names).copy()
-        for col in ["Return %", "Ann. Ret %", "Sharpe", "Beta", "Max DD %", "Win Rate %", "Final Value"]:
+        for col in ["Return %", "Ann. Ret %", "Sharpe", "Calmar", "Rew/Risk", "Beta", "Max DD %", "Win Rate %", "Final Value"]:
             if col in table.columns:
                 table[col] = table[col].apply(lambda x: f"{x:.2f}")
         table["Trades"] = table["Trades"].astype(int)
@@ -380,6 +400,9 @@ class BacktestAnalyzer:
         print(f"  Sharpe moyen               : {stats['sharpe_moyen']:.3f}")
         print(f"  Sharpe median              : {stats['sharpe_median']:.3f}")
         print(f"  Sharpe ecart-type          : {stats['sharpe_std']:.3f}")
+        print()
+        print(f"  Calmar moyen               : {stats['calmar_moyen']:.3f}")
+        print(f"  Calmar median              : {stats['calmar_median']:.3f}")
         print()
         print(f"  Beta moyen                 : {stats['beta_moyen']:.3f}")
         print(f"  Beta median                : {stats['beta_median']:.3f}")

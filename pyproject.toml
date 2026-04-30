@@ -13,7 +13,7 @@ dependencies = [
     "vectorbt",
     "matplotlib",
     "numpy",
-    "tqdm",
+    "rich",
 ]
 
 [tool.setuptools]

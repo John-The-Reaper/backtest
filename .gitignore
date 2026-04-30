@@ -4,5 +4,7 @@ backtests/
 data_repo/
 *.py[cod]
 *$py.class
-
+correlation.py
+RMF_trading_strategy.py
+test.py
 
