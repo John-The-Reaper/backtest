@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 from backtest_analysis import BacktestAnalyzer
-from data_manager import DataManager
+from data_manager import DataManager, CCXTProvider
 from backtest_vectorbt import TradingSimulator
 
 # ==================== PARAMETRES ====================
@@ -125,10 +125,10 @@ class ZScoreStrategy:
 if __name__ == "__main__":
     config = Config()
 
-    data_manager = DataManager(exchange_name=EXCHANGE, data_dir=config.DATA_DIR)
+    data_manager = DataManager(CCXTProvider(EXCHANGE), data_dir=config.DATA_DIR)
     # BTC/USDT est chargé en plus des followers (nécessaire pour le spread)
     all_symbols = list(dict.fromkeys([LEAD_SYMBOL] + SYMBOLS))
-    data_dict = data_manager.load_or_download_range(
+    data_dict = data_manager.get_many(
         symbols=all_symbols,
         timeframe=TIMEFRAME,
         start=START_DATE,

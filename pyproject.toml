@@ -17,4 +17,5 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["data_manager", "backtest_vectorbt", "backtest_analysis"]
+py-modules = ["backtest_vectorbt", "backtest_analysis"]
+packages = ["data_manager", "data_manager.providers"]

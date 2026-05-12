@@ -15,7 +15,7 @@ Aujourd'hui, le cas principal du repo est une strategie **z-score** appliquee a 
 
 Le projet s'appuie sur 4 briques :
 
-- [`data_manager.py`](/home/faucheur/code/backtest/data_manager.py) : telecharge les donnees via `ccxt`, ou charge directement un fichier `.feather` deja present
+- [`data_manager/`](/home/faucheur/code/backtest/data_manager) : package de recuperation OHLCV. Cache Feather + providers interchangeables (`CCXTProvider`, `YFinanceProvider`, `IBKRProvider`)
 - [`backtest_zscore_crypto.py`](/home/faucheur/code/backtest/backtest_zscore_crypto.py) : point d'entree principal pour la strategie z-score
 - [`backtest_vectorbt.py`](/home/faucheur/code/backtest/backtest_vectorbt.py) : moteur de backtest multi-actifs base sur `vectorbt`
 - [`backtest_analysis.py`](/home/faucheur/code/backtest/backtest_analysis.py) : export CSV / JSON + graphiques
@@ -83,11 +83,11 @@ Le `DataManager` peut utiliser les fichiers `.feather` si ils existent deja, ou 
 Exemple :
 
 ```python
-from data_manager import DataManager
+from data_manager import DataManager, CCXTProvider
 
-data_manager = DataManager(exchange_name="binance", data_dir="data")
+data_manager = DataManager(CCXTProvider("binance"), data_dir="data")
 
-data_dict = data_manager.load_or_download_range(
+data_dict = data_manager.get_many(
     symbols=SYMBOLS,
     timeframe="1h",
     start="2022-03-28",
@@ -96,19 +96,22 @@ data_dict = data_manager.load_or_download_range(
 )
 ```
 
-Si un fichier comme `data/BTC_USDT_1h_data.feather` est present, il peut etre relu directement.  
-Sinon, les donnees sont recuperees via `ccxt`.
+Si un fichier comme `data/BTC_USDT_1h_binance.feather` est present, il est relu et seuls les intervalles manquants sont retelecharges.
 
-Exemple de chargement force depuis un fichier local :
+Le provider peut etre echange selon la classe d'actif :
 
 ```python
-btc_df = data_manager.load_symbol_from_feather(
-    symbol="BTC/USDT",
-    timeframe="1h",
-    start="2022-03-28",
-    end="2024-12-31",
-)
+from data_manager import DataManager, CCXTProvider, YFinanceProvider
+
+# Crypto - mode auto: essaie binance, bybit, kraken, okx, coinbase, kucoin
+dm_crypto = DataManager(CCXTProvider())
+
+# Actions / ETF / indices via yfinance
+dm_stocks = DataManager(YFinanceProvider())
+mstr = dm_stocks.get("MSTR", "1d", "2023-01-01", "2024-12-31")
 ```
+
+Pour un seul symbole, utiliser `get(...)` au lieu de `get_many(...)`.
 
 ## Exemple de backtest
 
@@ -172,14 +175,15 @@ python3 backtest_analysis.py --summary backtests/results/backtest_zscore_summary
 
 ## Format des donnees
 
-Les fichiers attendus ressemblent a :
+Les fichiers de cache sont nommes `<symbol>_<timeframe>_<source>.feather` :
 
 ```text
-data/BTC_USDT_1h_data.feather
-data/ETH_USDT_1h_data.feather
+data/BTC_USDT_1h_binance.feather
+data/ETH_USDT_1h_binance.feather
+data/MSTR_1d_yfinance.feather
 ```
 
-Le mode hybride est aussi supporte : si le fichier existe, il est charge ; sinon les donnees sont telechargees.
+Le mode hybride est integre : si le fichier existe il est charge, et seuls les intervalles manquants pour la plage demandee sont telecharges puis fusionnes.
 
 ## Resultats generes
 
@@ -216,7 +220,7 @@ Les sorties principales sont :
 
 ## Limites actuelles
 
-- marche spot uniquement
-- exchange par defaut : `binance`
+- crypto spot uniquement via ccxt (futures/perp rejetes a la validation)
+- providers fournis : ccxt, yfinance, ibkr (ce dernier requiert TWS/IB Gateway)
 - la qualite du backtest depend directement de la qualite des donnees chargees
 - la strategie z-score actuelle reste une base de travail, pas un systeme de production
