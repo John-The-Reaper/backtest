@@ -440,6 +440,14 @@
   <a href="#prov-yfinance" class="method">YFinanceProvider</a>
   <a href="#prov-ibkr" class="method">IBKRProvider</a>
 
+  <div class="nav-section">Brokers</div>
+  <a href="#bro">Vue d'ensemble</a>
+  <a href="#bro-base" class="method">Broker (base)</a>
+  <a href="#bro-binance" class="method">BinanceBroker</a>
+  <a href="#bro-ibkr" class="method">IBKRBroker</a>
+  <a href="#bro-saxo" class="method">SaxoBroker</a>
+  <a href="#bro-smart" class="method">smart_buy / smart_sell</a>
+
   <div class="nav-section">TradingSimulator</div>
   <a href="#ts">Vue d'ensemble</a>
   <a href="#ts-init" class="method">__init__</a>
@@ -792,6 +800,210 @@ df <span class="op">=</span> dm.get(<span class="str">"AAPL"</span>, <span class
         <strong>Connexion persistante</strong>
         Une seule connexion socket est réutilisée entre les <code>fetch</code>. En mode parallèle (<code>get_many</code>),
         chaque worker reçoit un provider via <code>deepcopy</code> qui crée une nouvelle instance non connectée avec un <code>client_id</code> différent.
+      </div>
+    </div>
+  </div>
+
+  <hr />
+
+  <!-- ══════════════════════════════════════════════ BROKERS -->
+  <h2 id="bro">Brokers</h2>
+  <div class="class-block">
+    <div class="class-title">module broker</div>
+    <div class="class-import">from broker import BinanceBroker, IBKRBroker, SaxoBroker, OrderSide, OrderType</div>
+    <p class="class-desc">
+      Couche d'exécution d'ordres réels ou paper, totalement découplée du backtest. Chaque broker implémente l'interface <a href="#bro-base">Broker</a>
+      (<code>place_order</code>, <code>cancel_order</code>, <code>get_open_orders</code>, <code>get_position</code>, <code>get_balance</code>).
+      Les ordres, positions et soldes sont normalisés dans les dataclasses <code>Order</code>, <code>Position</code>, <code>Balance</code>, <code>Fill</code>,
+      et toutes les exceptions natives (ccxt, ib_insync, requests) sont wrappées dans <code>BrokerError</code> et ses sous-classes
+      (<code>AuthError</code>, <code>InsufficientFunds</code>, <code>InvalidOrder</code>, <code>OrderNotFound</code>, <code>SymbolNotFound</code>, <code>RateLimited</code>, <code>BrokerConnectionError</code>).
+    </p>
+    <p class="class-desc">
+      <strong>Credentials</strong> : lus depuis l'environnement (et <code>.env</code> via <code>python-dotenv</code>) si non passés au constructeur.
+      Voir <code>.env.example</code> à la racine du projet pour la liste complète des variables.
+    </p>
+  </div>
+
+  <!-- Broker base -->
+  <h3 id="bro-base">Broker (classe de base)</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        <span class="fn-name">class Broker</span>(<span class="param-type">ABC</span>)
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Interface unique partagée par tous les brokers d'exécution.</p>
+      <table>
+        <tr><th>Membre</th><th>Type</th><th>Description</th></tr>
+        <tr><td><code>name</code></td><td>str</td><td>Identifiant court : <code>"binance"</code>, <code>"ibkr"</code>, <code>"saxo"</code>.</td></tr>
+        <tr><td><code>paper</code></td><td>bool</td><td><code>True</code> = endpoints testnet/sim, <code>False</code> = comptes réels.</td></tr>
+        <tr><td><code>place_order(symbol, side, quantity, order_type, price=None, client_order_id=None)</code></td><td>abstract</td><td>Place un ordre. Pour <code>OrderType.LIMIT</code>, <code>price</code> est requis. Retourne <code>Order</code>.</td></tr>
+        <tr><td><code>cancel_order(order_id, symbol=None)</code></td><td>abstract</td><td>Annule un ordre par id. Le <code>symbol</code> peut être requis (Binance). Retourne <code>Order</code> (statut <code>CANCELED</code>).</td></tr>
+        <tr><td><code>get_order(order_id, symbol=None)</code></td><td>abstract</td><td>État courant d'un ordre par id. Lève <code>OrderNotFound</code> si absent.</td></tr>
+        <tr><td><code>get_open_orders(symbol=None)</code></td><td>abstract</td><td>Liste les ordres ouverts, filtrés optionnellement par symbole.</td></tr>
+        <tr><td><code>get_position(symbol)</code></td><td>abstract</td><td>Position courante. <code>quantity = 0</code> si absente.</td></tr>
+        <tr><td><code>get_balance()</code></td><td>abstract</td><td>Liste des soldes par devise (<code>currency</code>, <code>free</code>, <code>used</code>, <code>total</code>).</td></tr>
+        <tr><td><code>get_quote(symbol)</code></td><td>abstract</td><td>Snapshot bid/ask. Retourne <code>Quote(symbol, bid, ask, timestamp)</code> avec propriétés <code>mid</code> et <code>spread</code>. Nécessaire pour <code>smart_buy</code>/<code>smart_sell</code>.</td></tr>
+        <tr><td><code>smart_buy(symbol, qty, max_wait_s, steps, allow_market_fallback, poll_interval_s)</code></td><td>concret</td><td>Entrée long au meilleur prix possible. Voir <a href="#bro-smart">smart_buy / smart_sell</a>.</td></tr>
+        <tr><td><code>smart_sell(...)</code></td><td>concret</td><td>Symétrique pour la sortie / short.</td></tr>
+        <tr><td><code>validate(symbol)</code></td><td>no-op par défaut</td><td>Vérifie que le symbole est tradable. Lève <code>SymbolNotFound</code> sinon.</td></tr>
+        <tr><td><code>disconnect()</code></td><td>no-op par défaut</td><td>Libère les ressources (socket TWS, session HTTP).</td></tr>
+      </table>
+      <p class="method-desc" style="margin-top: 12px;">
+        <strong>Types d'ordre V1</strong> : <code>OrderType.MARKET</code>, <code>OrderType.LIMIT</code>, <code>OrderType.MIDPRICE</code> (IBKR uniquement — les autres lèvent <code>InvalidOrder</code>). <code>STOP</code> ajoutable broker par broker en V2.
+      </p>
+    </div>
+  </div>
+
+  <!-- BinanceBroker -->
+  <h3 id="bro-binance">BinanceBroker</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        <span class="fn-name">BinanceBroker</span>(<span class="param-name">api_key</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">api_secret</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">paper</span><span class="op">=</span><span class="param-default">True</span>)
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Broker Binance via <code>ccxt</code>. Spot uniquement pour le V1.</p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>api_key</td><td>str</td><td>Si <code>None</code>, lu depuis <code>BINANCE_API_KEY</code>.</td><td><code>None</code></td></tr>
+        <tr><td>api_secret</td><td>str</td><td>Si <code>None</code>, lu depuis <code>BINANCE_API_SECRET</code>.</td><td><code>None</code></td></tr>
+        <tr><td>paper</td><td>bool</td><td><code>True</code> → testnet (<code>testnet.binance.vision</code>, clés dédiées à créer), <code>False</code> → réel.</td><td><code>True</code></td></tr>
+      </table>
+      <p class="method-desc" style="margin-top: 12px;">
+        <strong>Mapping ccxt</strong> : <code>place_order</code> → <code>create_order</code> ; <code>cancel_order</code> → <code>cancel_order</code> ;
+        <code>get_open_orders</code> → <code>fetch_open_orders</code> ; <code>get_position("BTC/USDT")</code> → solde de la base asset via <code>fetch_balance</code> ;
+        <code>get_balance</code> → <code>fetch_balance</code>.
+      </p>
+      <pre><code><span class="kw">from</span> broker <span class="kw">import</span> BinanceBroker, OrderSide, OrderType
+
+bro <span class="op">=</span> BinanceBroker(paper<span class="op">=</span><span class="param-default">True</span>)              <span class="cm"># lit .env</span>
+bro.validate(<span class="str">"BTC/USDT"</span>)
+
+mkt <span class="op">=</span> bro.place_order(<span class="str">"BTC/USDT"</span>, OrderSide.BUY, <span class="nb">0.001</span>, OrderType.MARKET)
+lmt <span class="op">=</span> bro.place_order(<span class="str">"BTC/USDT"</span>, OrderSide.SELL, <span class="nb">0.001</span>, OrderType.LIMIT, price<span class="op">=</span><span class="nb">200_000</span>)
+bro.cancel_order(lmt.id, symbol<span class="op">=</span><span class="str">"BTC/USDT"</span>)</code></pre>
+      <div class="warn-box">
+        <strong>Spot only</strong>
+        <code>Position.avg_entry_price</code> est toujours <code>None</code> sur spot — Binance ne le calcule pas. Pour un suivi PnL fin, agréger les <code>Fill</code> côté client.
+      </div>
+    </div>
+  </div>
+
+  <!-- IBKRBroker -->
+  <h3 id="bro-ibkr">IBKRBroker</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        <span class="fn-name">IBKRBroker</span>(<span class="param-name">host</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">port</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">client_id</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">paper</span><span class="op">=</span><span class="param-default">True</span>, <span class="param-name">timeout</span><span class="op">=</span><span class="nb">15.0</span>)
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Broker Interactive Brokers via <code>ib_insync</code>. Requiert TWS ou IB Gateway lancé, logué, avec API socket activée.</p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>host</td><td>str</td><td>Si <code>None</code>, <code>IBKR_HOST</code> ou <code>127.0.0.1</code>.</td><td><code>None</code></td></tr>
+        <tr><td>port</td><td>int</td><td>Si <code>None</code>, <code>IBKR_PORT</code> ou <code>7497</code> (paper TWS) / <code>7496</code> (live TWS). IB Gateway : <code>4002</code> / <code>4001</code>.</td><td><code>None</code></td></tr>
+        <tr><td>client_id</td><td>int</td><td>Si <code>None</code>, <code>IBKR_CLIENT_ID</code> ou un ID aléatoire (1000–9999) — évite la collision avec un <code>IBKRProvider</code> connecté en parallèle.</td><td><code>None</code></td></tr>
+        <tr><td>paper</td><td>bool</td><td>Influence le port par défaut quand <code>port=None</code>.</td><td><code>True</code></td></tr>
+        <tr><td>timeout</td><td>float</td><td>Timeout connexion socket (secondes).</td><td><code>15.0</code></td></tr>
+      </table>
+      <p class="method-desc" style="margin-top: 12px;">
+        <strong>Symboles</strong> : par défaut résolus en <code>Stock(symbol, "SMART", "USD")</code>. Pour futures / forex / options, passer un <code>ib_insync.Contract</code> directement.
+      </p>
+      <p class="method-desc">
+        <strong>Mapping ib_insync</strong> : <code>place_order</code> → <code>placeOrder</code> (<code>MarketOrder</code> ou <code>LimitOrder</code>) ;
+        <code>cancel_order</code> → <code>cancelOrder</code> via cache interne <code>_orders: dict[str, Trade]</code> ;
+        <code>get_open_orders</code> → <code>reqAllOpenOrders</code> + <code>openTrades()</code> ;
+        <code>get_position</code> → <code>positions()</code> filtré ;
+        <code>get_balance</code> → <code>accountSummary()</code> agrégé sur <code>TotalCashValue</code> et <code>AvailableFunds</code> par devise.
+      </p>
+      <div class="note">
+        <strong>Connexion persistante &amp; deepcopy</strong>
+        Une socket unique est réutilisée entre les appels. Le override <code>__deepcopy__</code> rend une instance neuve non connectée avec un nouveau <code>client_id</code>,
+        ce qui permet à un <code>IBKRBroker</code> et un <code>IBKRProvider</code> de coexister sans collision.
+      </div>
+    </div>
+  </div>
+
+  <!-- SaxoBroker -->
+  <h3 id="bro-saxo">SaxoBroker</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        <span class="fn-name">SaxoBroker</span>(<span class="param-name">access_token</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">account_key</span><span class="op">=</span><span class="param-default">None</span>, <span class="param-name">paper</span><span class="op">=</span><span class="param-default">True</span>)
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">Broker Saxo Banque via REST OpenAPI (<code>requests</code>).</p>
+      <table>
+        <tr><th>Paramètre</th><th>Type</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td>access_token</td><td>str</td><td>Token Bearer (24h en démo). Si <code>None</code>, <code>SAXO_ACCESS_TOKEN</code>.</td><td><code>None</code></td></tr>
+        <tr><td>account_key</td><td>str</td><td>Si <code>None</code>, <code>SAXO_ACCOUNT_KEY</code> sinon auto-résolu via <code>/port/v1/accounts/me</code> au premier besoin.</td><td><code>None</code></td></tr>
+        <tr><td>paper</td><td>bool</td><td><code>True</code> → <code>gateway.saxobank.com/sim/openapi</code> ; <code>False</code> → <code>gateway.saxobank.com/openapi</code>.</td><td><code>True</code></td></tr>
+      </table>
+      <p class="method-desc" style="margin-top: 12px;">
+        <strong>Résolution Uic</strong> : Saxo identifie les instruments par <code>Uic</code> (entier interne), pas par ticker.
+        <code>SaxoBroker</code> maintient un cache <code>symbol → Uic</code> alimenté par <code>GET /ref/v1/instruments?Keywords=…</code>.
+        AssetType par défaut : <code>Stock</code> (pour FxSpot, surcharger via injection manuelle dans le cache).
+      </p>
+      <p class="method-desc">
+        <strong>Mapping endpoints</strong> :
+        <code>place_order</code> → <code>POST /trade/v2/orders</code> ;
+        <code>cancel_order</code> → <code>DELETE /trade/v2/orders/{id}</code> ;
+        <code>get_open_orders</code> → <code>GET /port/v1/orders/me/</code> ;
+        <code>get_position</code> → <code>GET /port/v1/netpositions/me/</code> filtré sur <code>Uic</code> ;
+        <code>get_balance</code> → <code>GET /port/v1/balances/?AccountKey=…</code>.
+      </p>
+      <div class="warn-box">
+        <strong>Token démo 24h</strong>
+        Un <code>401</code> est wrappé en <code>AuthError</code> avec un message explicite invitant à régénérer le token sur <code>developer.saxo</code>.
+        L'OAuth refresh flow complet est hors-scope V1.
+      </div>
+    </div>
+  </div>
+
+  <!-- smart_buy / smart_sell -->
+  <h3 id="bro-smart">smart_buy / smart_sell</h3>
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-sig">
+        <span class="fn-name">smart_buy</span>(<span class="param-name">symbol</span>, <span class="param-name">quantity</span>, <span class="param-name">max_wait_s</span><span class="op">=</span><span class="nb">10.0</span>, <span class="param-name">steps</span><span class="op">=</span><span class="nb">3</span>, <span class="param-name">allow_market_fallback</span><span class="op">=</span><span class="param-default">True</span>, <span class="param-name">poll_interval_s</span><span class="op">=</span><span class="nb">0.5</span>) <span class="op">-&gt;</span> <span class="cls">Order</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <p class="method-desc">
+        Entre en position au meilleur prix possible en <code>max_wait_s</code> secondes maximum. Conçu pour les marchés illiquides : ne paie pas systématiquement le spread complet d'un MARKET tout en garantissant un fill via fallback.
+      </p>
+      <table>
+        <tr><th>Paramètre</th><th>Description</th><th>Défaut</th></tr>
+        <tr><td><code>quantity</code></td><td>Quantité en base asset (BTC pour BTC/USDT, shares pour AAPL).</td><td>—</td></tr>
+        <tr><td><code>max_wait_s</code></td><td>Budget temps total avant fallback market.</td><td><code>10.0</code></td></tr>
+        <tr><td><code>steps</code></td><td>Nombre de paliers de prix entre mid et ask (BUY) / mid et bid (SELL). Ignoré par <code>IBKRBroker</code> qui utilise MIDPRICE natif.</td><td><code>3</code></td></tr>
+        <tr><td><code>allow_market_fallback</code></td><td>Si <code>True</code>, bascule en MARKET sur la quantité restante au timeout. Si <code>False</code>, lève <code>InvalidOrder</code> sur fill partiel.</td><td><code>True</code></td></tr>
+        <tr><td><code>poll_interval_s</code></td><td>Fréquence de polling du statut de l'ordre.</td><td><code>0.5</code></td></tr>
+      </table>
+      <p class="method-desc" style="margin-top: 12px;">
+        <strong>Stratégie par broker :</strong>
+      </p>
+      <ul style="margin-left: 22px; margin-bottom: 12px;">
+        <li><strong>IBKR</strong> : ordre <code>MIDPRICE</code> natif (s'exécute au mid NBBO ou mieux, jamais pire), poll, cancel + <code>MARKET</code> au timeout.</li>
+        <li><strong>Binance / Saxo</strong> : <em>climbing limit</em> — lit le quote, poste un <code>LIMIT @ mid</code>, puis grimpe en <code>steps</code> paliers vers ask (BUY) ou bid (SELL). Suit la quantité restante entre chaque palier (fills partiels gérés).</li>
+      </ul>
+      <pre><code><span class="cm"># Achat AAPL avec 10s de patience, jamais market</span>
+order <span class="op">=</span> bro.smart_buy(<span class="str">"AAPL"</span>, <span class="nb">10</span>, max_wait_s<span class="op">=</span><span class="nb">10</span>, allow_market_fallback<span class="op">=</span><span class="param-default">False</span>)
+
+<span class="cm"># Sortie rapide : 5 paliers en 5s + market fallback</span>
+order <span class="op">=</span> bro.smart_sell(<span class="str">"BTC/USDT"</span>, <span class="nb">0.01</span>, max_wait_s<span class="op">=</span><span class="nb">5</span>, steps<span class="op">=</span><span class="nb">5</span>)</code></pre>
+      <div class="note">
+        <strong>Retour</strong>
+        Renvoie le dernier <code>Order</code> placé (climb final, market fallback ou ordre rempli avant timeout). Pour le suivi des fills partiels intermédiaires, agréger côté client via les ids d'ordres loggés.
+      </div>
+      <div class="warn-box">
+        <strong>Requiert <code>get_quote</code></strong>
+        Sur Binance et Saxo, le climb utilise <code>get_quote(symbol)</code> pour calculer le mid. Si le bid/ask n'est pas disponible (marché fermé sur Saxo, paire suspendue sur Binance), lève <code>BrokerError</code>.
       </div>
     </div>
   </div>

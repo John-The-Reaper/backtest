@@ -2,11 +2,11 @@ import numpy as np
 import pandas as pd
 
 
-class ZScoreStrategy:
-    """Strategie z-score mean-reversion sur un actif."""
+class ZScoreSimpleStrategy:
+    """Strategie z-score mean-reversion sur un actif (sans pairs)."""
 
-    def __init__(self):
-        self.name = "ZScoreStrategy"
+    def __init__(self) -> None:
+        self.name = "ZScoreSimpleStrategy"
 
     def prepare_data(self, data_dict, symbol):
         asset_name = symbol.split("/")[0]
@@ -22,8 +22,7 @@ class ZScoreStrategy:
         z_score_exit = float(params.get("z_score_exit", 0.0))
 
         data["Mean"] = data[asset_name].rolling(window=window).mean()
-        data["Std"] = data[asset_name].rolling(window=window).std(ddof=0)
-        data["Std"] = data["Std"].replace(0.0, np.nan)
+        data["Std"] = data[asset_name].rolling(window=window).std(ddof=0).replace(0.0, np.nan)
         data["Z-Score"] = (data[asset_name] - data["Mean"]) / data["Std"]
         data = data.ffill().bfill()
 

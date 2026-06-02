@@ -85,6 +85,14 @@ class CCXTProvider(Provider):
         if m.get("spot") is False:
             raise ValueError(f"Symbole non spot: {symbol}")
 
+    def timeframe_ms(self, timeframe: str) -> int:
+        if self._exchange is None:
+            return 0
+        try:
+            return int(self._exchange.parse_timeframe(timeframe) * 1000)
+        except Exception:
+            return 0
+
     def _fetch_with_retry(self, symbol, timeframe, since, limit, max_retries=5):
         for attempt in range(max_retries):
             try:

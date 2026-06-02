@@ -4,7 +4,7 @@ import pandas as pd
 class MovingAverageStrategy:
     """Strategie croisement de moyennes mobiles."""
 
-    def __init__(self, name="MovingAverageStrategy"):
+    def __init__(self, name: str = "MovingAverageStrategy") -> None:
         self.name = name
 
     def prepare_data(self, data_dict, symbol):

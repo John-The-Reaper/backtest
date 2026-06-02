@@ -315,8 +315,18 @@ class BacktestAnalyzer:
 
     def _plot_heatmap_metrics(self, df: pd.DataFrame) -> None:
         """Heatmap des metriques cles par asset."""
-        cols = ["return_pct", "annualized_pct", "sharpe_ratio", "calmar_ratio", "reward_risk", "max_dd_pct", "win_rate_pct", "beta_underlying"]
-        labels = ["Return %", "Ann. Return %", "Sharpe", "Calmar", "Reward/Risk", "Max DD %", "Win Rate %", "Beta"]
+        col_label_pairs = [
+            ("return_pct", "Return %"),
+            ("annualized_pct", "Ann. Return %"),
+            ("sharpe_ratio", "Sharpe"),
+            ("calmar_ratio", "Calmar"),
+            ("reward_risk", "Reward/Risk"),
+            ("max_dd_pct", "Max DD %"),
+            ("win_rate_pct", "Win Rate %"),
+            ("beta_underlying", "Beta"),
+        ]
+        cols = [c for c, _ in col_label_pairs]
+        labels = [l for _, l in col_label_pairs]
         hm_df = df.set_index("symbol")[cols].copy()
         hm_df.columns = labels
 
@@ -442,15 +452,19 @@ class BacktestAnalyzer:
             print("Reconstruction des equity curves depuis les portfolios .pkl ...")
             eq_df = self._rebuild_equity_curves_from_pkl(df)
 
-        # 2) Stats globales
-        # Detecter capital initial depuis les donnees
-        capital_initial = 100.0  # defaut
-        if not df.empty:
+        # 2) Stats globales — capital_initial est serialise dans le summary par
+        # TradingSimulator.export_results_to_json depuis params.capital_initial.
+        capital_initial = float(payload.get("capital_initial") or 0.0)
+        if capital_initial <= 0 and not df.empty:
+            # Fallback (anciens summaries sans le champ) : reconstitue par
+            # final_value / (1 + total_return). Imprecis si total_return ~= -1.
             row0 = df.iloc[0]
             if row0["total_return"] != -1.0:
                 estimated = row0["final_value"] / (1.0 + row0["total_return"])
                 if estimated > 0:
                     capital_initial = round(estimated, 2)
+        if capital_initial <= 0:
+            capital_initial = 100.0
 
         stats = self._global_stats(df, capital_initial=capital_initial)
 

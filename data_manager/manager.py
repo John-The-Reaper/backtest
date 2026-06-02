@@ -108,9 +108,9 @@ class DataManager:
         cached = self.cache.load(symbol, timeframe, source)
 
         # Tolerance = 1 timeframe pour ignorer la bougie en cours non fermee.
-        # On la calcule via le provider quand c'est ccxt, sinon 0 (yfinance gere
-        # mal les requetes sur la barre courante de toute facon).
-        tol_ms = self._timeframe_tolerance(provider, timeframe)
+        # Chaque provider sait calculer (ou pas) la duree d'une bougie ;
+        # defaut = 0 (yfinance ne sert pas la barre courante de toute facon).
+        tol_ms = provider.timeframe_ms(timeframe)
         missing = self.cache.missing_ranges(cached, start_ms, end_ms, tolerance_ms=tol_ms)
 
         if missing:
@@ -129,17 +129,6 @@ class DataManager:
             full = cached
 
         return self._window(full, start_ms, end_ms)
-
-    @staticmethod
-    def _timeframe_tolerance(provider: Provider, timeframe: str) -> int:
-        """Retourne la duree d'une bougie en ms si on peut la calculer, sinon 0."""
-        ex = getattr(provider, "_exchange", None)  # ccxt
-        if ex is not None:
-            try:
-                return int(ex.parse_timeframe(timeframe) * 1000)
-            except Exception:
-                return 0
-        return 0
 
     @staticmethod
     def _window(df: pd.DataFrame, start_ms: int, end_ms: int) -> pd.DataFrame:

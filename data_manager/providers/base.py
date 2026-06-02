@@ -37,3 +37,11 @@ class Provider(ABC):
         Implementation par defaut: no-op. Les providers peuvent override.
         """
         return None
+
+    def timeframe_ms(self, timeframe: str) -> int:
+        """
+        Duree d'une bougie en ms pour le `timeframe` donne, ou 0 si inconnu.
+        Sert au cache pour tolerer la bougie en cours non fermee.
+        Defaut : 0 (les providers qui savent le calculer override).
+        """
+        return 0

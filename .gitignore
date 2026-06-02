@@ -7,4 +7,5 @@ data_repo/
 correlation.py
 RMF_trading_strategy.py
 test.py
+.env
 

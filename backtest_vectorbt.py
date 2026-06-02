@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
-from typing import Dict, List, Tuple
-import concurrent.futures
+import traceback
 
 import pandas as pd
 import vectorbt as vbt
-from time import perf_counter
 
 
 class TradingSimulator:
@@ -57,11 +56,15 @@ class TradingSimulator:
         beta = returns_df["equity"].cov(returns_df["asset"]) / asset_variance
         return 0.0 if pd.isna(beta) else float(beta)
 
-
+    def _resolve_params(self, params):
+        if params is not None:
+            return params
+        if self.config is None or not hasattr(self.config, "default_params"):
+            raise ValueError("params doit etre fourni ou self.config.default_params doit exister")
+        return self.config.default_params
 
     def run_simulation(self, symbol, data_dict, params=None, reload=False):
-        if params is None:
-            params = self.config.default_params
+        params = self._resolve_params(params)
 
         asset_name = symbol.split("/")[0]
         strategy_name = getattr(self.strategy, "name", "Strategy")
@@ -81,22 +84,16 @@ class TradingSimulator:
             pf = vbt.Portfolio.load(portfolio_path)
         else:
             signals = self.strategy.generate_signals(data, asset_name, params)
-            if not isinstance(signals, tuple):
-                raise ValueError("generate_signals doit retourner un tuple")
-
-            short_entries_df = None
-            short_exits_df = None
+            if not isinstance(signals, tuple) or len(signals) not in (3, 5):
+                raise ValueError("generate_signals doit retourner un tuple de 3 ou 5 elements")
 
             if len(signals) == 3:
                 data, entries_df, exits_df = signals
-            elif len(signals) == 5:
-                data, entries_df, exits_df, short_entries_df, short_exits_df = signals
+                short_entries_df = short_exits_df = None
             else:
-                raise ValueError("generate_signals doit retourner 3 ou 5 elements")
+                data, entries_df, exits_df, short_entries_df, short_exits_df = signals
 
-        close = data[asset_name].astype(float)
-
-        if not load_from_file:
+            close = data[asset_name].astype(float)
             entries_df = self._to_bool_frame(entries_df, asset_name, close.index)
             exits_df = self._to_bool_frame(exits_df, asset_name, close.index)
 
@@ -123,6 +120,7 @@ class TradingSimulator:
             pf = vbt.Portfolio.from_signals(**kwargs)
             pf.save(portfolio_path)
 
+        close = data[asset_name].astype(float)
         equity_curve = pf.value()
         beta_underlying = self._compute_beta(equity_curve, close.reindex(equity_curve.index).ffill().bfill())
 
@@ -144,8 +142,7 @@ class TradingSimulator:
         return {"symbol": symbol, "portfolio_data": result}
 
     def run_batch_simulations(self, symbols, data_dict, params=None, reload=False, max_workers=None):
-        if params is None:
-            params = self.config.default_params
+        params = self._resolve_params(params)
         results = {}
         portfolios_data = {}
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -160,11 +157,23 @@ class TradingSimulator:
                     results[symbol] = res
                     portfolios_data[symbol] = res["portfolio_data"]
                 except Exception as e:
-                    print(f"Erreur lors de la simulation pour {symbol}: {e}")
+                    print(f"[ERREUR] Simulation {symbol} : {e}")
+                    print(traceback.format_exc())
 
         return results, portfolios_data
 
-    def export_results_to_json(self, portfolios_data, symbols, output_path=os.path.join("backtests", "results", "results.json")):
+    def export_results_to_json(
+        self,
+        portfolios_data,
+        symbols,
+        output_path=None,
+        params=None,
+    ):
+        if output_path is None:
+            output_path = os.path.join("backtests", "results", "results.json")
+        params = self._resolve_params(params)
+        capital_initial = float(params.get("capital_initial", 0.0))
+
         rows = []
         equity_curves = {}
 
@@ -198,12 +207,11 @@ class TradingSimulator:
             if eq is not None:
                 equity_curves[symbol] = eq
 
-        payload = {"results": rows}
+        payload = {"capital_initial": capital_initial, "results": rows}
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
 
-        # Sauvegarde des equity curves en CSV pour l'analyse
         if equity_curves:
             eq_df = pd.DataFrame(equity_curves)
             eq_path = output_path.replace(".json", "_equity_curves.csv")

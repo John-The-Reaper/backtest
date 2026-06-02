@@ -14,8 +14,11 @@ dependencies = [
     "matplotlib",
     "numpy",
     "rich",
+    "ib-insync",
+    "requests",
+    "python-dotenv",
 ]
 
 [tool.setuptools]
 py-modules = ["backtest_vectorbt", "backtest_analysis"]
-packages = ["data_manager", "data_manager.providers"]
+packages = ["data_manager", "data_manager.providers", "broker", "broker.brokers", "strategies"]

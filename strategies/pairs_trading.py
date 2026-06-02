@@ -8,14 +8,13 @@ class PairsTradingStrategy:
     Par defaut reference = BTC/USDT.
     """
 
-    def __init__(self, reference_symbol="BTC/USDT"):
+    def __init__(self, reference_symbol: str = "BTC/USDT") -> None:
         self.name = "PairsTradingStrategy"
         self.reference_symbol = reference_symbol
 
     def prepare_data(self, data_dict, symbol):
         asset_name = symbol.split("/")[0]
 
-        # Fallback pour eviter auto-reference
         ref_symbol = self.reference_symbol
         if ref_symbol == symbol:
             ref_symbol = "ETH/USDT" if "ETH/USDT" in data_dict else None
@@ -50,7 +49,6 @@ class PairsTradingStrategy:
         data["Spread_Z"] = (spread - spread_mean) / spread_std
         data = data.ffill().bfill()
 
-        # Long actif quand spread est trop bas (mean reversion)
         entries = data["Spread_Z"] < -z_entry
         exits = data["Spread_Z"] >= z_exit
 

@@ -13,9 +13,10 @@ Aujourd'hui, le cas principal du repo est une strategie **z-score** appliquee a 
 
 ## Base du projet
 
-Le projet s'appuie sur 4 briques :
+Le projet s'appuie sur 5 briques :
 
 - [`data_manager/`](/home/faucheur/code/backtest/data_manager) : package de recuperation OHLCV. Cache Feather + providers interchangeables (`CCXTProvider`, `YFinanceProvider`, `IBKRProvider`)
+- [`broker/`](/home/faucheur/code/backtest/broker) : execution d'ordres reels ou paper sur Binance / IBKR / Saxo Banque (interface unique, ordres normalises)
 - [`backtest_zscore_crypto.py`](/home/faucheur/code/backtest/backtest_zscore_crypto.py) : point d'entree principal pour la strategie z-score
 - [`backtest_vectorbt.py`](/home/faucheur/code/backtest/backtest_vectorbt.py) : moteur de backtest multi-actifs base sur `vectorbt`
 - [`backtest_analysis.py`](/home/faucheur/code/backtest/backtest_analysis.py) : export CSV / JSON + graphiques
@@ -218,9 +219,64 @@ Les sorties principales sont :
 
 ![Sharpe vs drawdown](backtests/results/graphs/sharpe_vs_drawdown.png)
 
+## Execution live (paper / real)
+
+Le package [`broker/`](/home/faucheur/code/backtest/broker) ajoute une couche d'execution d'ordres reels, totalement decouplee du backtest. Une interface unique (`Broker`) pour les 3 brokers supportes :
+
+- **`BinanceBroker`** (spot) via `ccxt` — testnet `binance.vision` quand `paper=True`
+- **`IBKRBroker`** via `ib_insync` — TWS / IB Gateway paper (port 7497 / 4002) quand `paper=True`
+- **`SaxoBroker`** via REST OpenAPI — endpoint `gateway.saxobank.com/sim/openapi` quand `paper=True`
+
+Les ordres, positions et balances sont normalises dans des dataclasses (`Order`, `Position`, `Balance`, `Fill`) et toutes les exceptions natives sont wrappees dans `BrokerError` et ses sous-classes (`AuthError`, `InsufficientFunds`, `InvalidOrder`, `OrderNotFound`, `SymbolNotFound`, `RateLimited`, `BrokerConnectionError`).
+
+Credentials via `.env` (voir `.env.example`) :
+
+```text
+BINANCE_API_KEY=...
+BINANCE_API_SECRET=...
+IBKR_HOST=127.0.0.1
+IBKR_PORT=7497
+IBKR_CLIENT_ID=
+SAXO_ACCESS_TOKEN=...
+SAXO_ACCOUNT_KEY=
+```
+
+Exemple minimal (testnet Binance) :
+
+```python
+from broker import BinanceBroker, OrderSide, OrderType
+
+bro = BinanceBroker(paper=True)              # lit .env
+bro.validate("BTC/USDT")
+
+mkt = bro.place_order("BTC/USDT", OrderSide.BUY, 0.001, OrderType.MARKET)
+print(bro.get_position("BTC/USDT"))
+
+lmt = bro.place_order("BTC/USDT", OrderSide.SELL, 0.001, OrderType.LIMIT, price=200_000)
+bro.cancel_order(lmt.id, symbol="BTC/USDT")
+
+print(bro.get_balance())
+```
+
+Voir [`examples/live_broker_demo.py`](/home/faucheur/code/backtest/examples/live_broker_demo.py).
+
+### Smart entry (marches illiquides)
+
+Pour entrer en position au meilleur prix possible sans rester pendu indefiniment, chaque broker expose `smart_buy` / `smart_sell` :
+
+```python
+bro.smart_buy("AAPL", 10, max_wait_s=10, steps=3, allow_market_fallback=True)
+```
+
+- **IBKR** : utilise le type d'ordre natif `MIDPRICE` (execution au mid NBBO ou mieux), puis fallback `MARKET` au bout de `max_wait_s` si pas rempli.
+- **Binance / Saxo** : *climbing limit* — lit le quote, poste un LIMIT au mid, grimpe en `steps` paliers vers l'ask (BUY) ou le bid (SELL), avec fallback `MARKET` final.
+
+Si `allow_market_fallback=False`, leve `InvalidOrder` si la quantite restante n'est pas remplie dans le temps imparti (utile pour ne jamais payer le spread complet).
+
 ## Limites actuelles
 
 - crypto spot uniquement via ccxt (futures/perp rejetes a la validation)
 - providers fournis : ccxt, yfinance, ibkr (ce dernier requiert TWS/IB Gateway)
+- brokers V1 : market + limit seulement, pas de streaming/websocket de fills
 - la qualite du backtest depend directement de la qualite des donnees chargees
 - la strategie z-score actuelle reste une base de travail, pas un systeme de production
