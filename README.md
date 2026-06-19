@@ -273,6 +273,8 @@ bro.smart_buy("AAPL", 10, max_wait_s=10, steps=3, allow_market_fallback=True)
 
 Si `allow_market_fallback=False`, leve `InvalidOrder` si la quantite restante n'est pas remplie dans le temps imparti (utile pour ne jamais payer le spread complet).
 
+**Pre-market / after-hours IBKR** : passer `outside_rth=True` au `smart_buy`/`smart_sell`. Sur IBKR, ca bypass le MIDPRICE natif (qu'IBKR refuse hors RTH) et utilise le climb LIMIT generique avec le flag `outsideRth=True` propage a chaque ordre. Le fallback final devient LIMIT cross-spread au lieu de MARKET (que IBKR refuse aussi en extended hours). Sur Binance/Saxo, le flag est ignore (crypto 24/7 / pas d'equivalent direct OpenAPI Saxo V1).
+
 ## Limites actuelles
 
 - crypto spot uniquement via ccxt (futures/perp rejetes a la validation)

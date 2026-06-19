@@ -215,6 +215,7 @@ class SaxoBroker(Broker):
         order_type: OrderType = OrderType.MARKET,
         price: Optional[float] = None,
         client_order_id: Optional[str] = None,
+        outside_rth: bool = False,  # ignore : pas d'equivalent direct dans l'OpenAPI Saxo V1
     ) -> Order:
         if order_type == OrderType.MIDPRICE:
             raise InvalidOrder("OrderType.MIDPRICE n'est pas supporte par Saxo (IBKR uniquement)")

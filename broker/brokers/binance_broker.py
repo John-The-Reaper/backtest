@@ -143,6 +143,7 @@ class BinanceBroker(Broker):
         order_type: OrderType = OrderType.MARKET,
         price: Optional[float] = None,
         client_order_id: Optional[str] = None,
+        outside_rth: bool = False,  # ignore : crypto trade 24/7
     ) -> Order:
         if order_type == OrderType.MIDPRICE:
             raise InvalidOrder("OrderType.MIDPRICE n'est pas supporte par Binance (IBKR uniquement)")

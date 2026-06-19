@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 import time
 from typing import Dict, List, Optional
@@ -152,8 +153,12 @@ class IBKRBroker(Broker):
             otype = OrderType.MIDPRICE
         else:
             otype = OrderType.LIMIT
+        # ib_insync utilise UNSET_DOUBLE (= sys.float_info.max ~1.79e308) pour
+        # "non defini" (cas des MARKET orders), pas 0.0. On nettoie les deux.
         price = getattr(order_obj, "lmtPrice", None)
-        if price == 0.0:
+        if price is None or price == 0.0 or price > 1e100 or (
+            isinstance(price, float) and math.isnan(price)
+        ):
             price = None
         avg = float(trade.orderStatus.avgFillPrice) if trade.orderStatus and trade.orderStatus.avgFillPrice else None
 
@@ -200,12 +205,26 @@ class IBKRBroker(Broker):
         order_type: OrderType = OrderType.MARKET,
         price: Optional[float] = None,
         client_order_id: Optional[str] = None,
+        outside_rth: bool = False,
     ) -> Order:
         from ib_insync import LimitOrder, MarketOrder
         from ib_insync import Order as IBOrder
 
         if order_type == OrderType.LIMIT and price is None:
             raise InvalidOrder("price est requis pour un ordre LIMIT")
+
+        # IBKR refuse MARKET et MIDPRICE hors RTH (doc IBKR : "clients are
+        # restricted to limit order types" en pre/after-market).
+        if outside_rth and order_type == OrderType.MARKET:
+            raise InvalidOrder(
+                "MARKET refuse par IBKR hors RTH. Utiliser LIMIT @ ask + buffer "
+                "(ou smart_buy avec outside_rth=True pour bascule auto)."
+            )
+        if outside_rth and order_type == OrderType.MIDPRICE:
+            raise InvalidOrder(
+                "MIDPRICE non supporte hors RTH par IBKR. "
+                "Utiliser smart_buy avec outside_rth=True (climb LIMIT)."
+            )
 
         ib = self._ensure_connected()
         contract = self._resolve_contract(symbol)
@@ -215,7 +234,7 @@ class IBKRBroker(Broker):
         if order_type == OrderType.MARKET:
             order = MarketOrder(action, quantity)
         elif order_type == OrderType.LIMIT:
-            order = LimitOrder(action, quantity, price)
+            order = LimitOrder(action, quantity, price, outsideRth=outside_rth)
         else:  # MIDPRICE : ordre IBKR natif, price utilise comme cap (optionnel)
             order = IBOrder()
             order.action = action
@@ -282,8 +301,16 @@ class IBKRBroker(Broker):
         if not tickers:
             raise SymbolNotFound(f"IBKR : pas de ticker pour {symbol!r}")
         t = tickers[0]
-        bid = float(t.bid) if t.bid is not None and t.bid > 0 else 0.0
-        ask = float(t.ask) if t.ask is not None and t.ask > 0 else 0.0
+
+        def _valid_px(v) -> bool:
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                return False
+            return v > 0 and not math.isnan(v)
+
+        bid = float(t.bid) if _valid_px(t.bid) else 0.0
+        ask = float(t.ask) if _valid_px(t.ask) else 0.0
         if bid == 0.0 or ask == 0.0:
             raise BrokerError(f"IBKR : bid/ask indisponible pour {symbol} (marche ferme ?)")
         ts = int(t.time.timestamp() * 1000) if t.time else 0
@@ -345,17 +372,25 @@ class IBKRBroker(Broker):
             out.append(Balance(currency=cur, free=free, used=max(0.0, total - free), total=total))
         return out
 
-    # ---- Smart entry override : on utilise MIDPRICE natif IBKR ---------
+    # ---- Smart entry override : MIDPRICE natif IBKR en RTH, climb sinon -
 
     def smart_buy(
         self,
         symbol,
         quantity: float,
         max_wait_s: float = 10.0,
-        steps: int = 3,  # ignore : MIDPRICE gere la logique cote IBKR
+        steps: int = 3,  # ignore en mode MIDPRICE, utilise en mode climb
         allow_market_fallback: bool = True,
         poll_interval_s: float = 0.5,
+        outside_rth: bool = False,
     ) -> Order:
+        if outside_rth:
+            # MIDPRICE et MARKET refuses hors RTH par IBKR.
+            # Bascule sur le climb LIMIT generique du Broker base.
+            return Broker._smart_entry_climb(
+                self, symbol, OrderSide.BUY, quantity, max_wait_s, steps,
+                allow_market_fallback, poll_interval_s, outside_rth=True,
+            )
         return self._smart_midprice(symbol, OrderSide.BUY, quantity,
                                     max_wait_s, allow_market_fallback, poll_interval_s)
 
@@ -367,7 +402,13 @@ class IBKRBroker(Broker):
         steps: int = 3,
         allow_market_fallback: bool = True,
         poll_interval_s: float = 0.5,
+        outside_rth: bool = False,
     ) -> Order:
+        if outside_rth:
+            return Broker._smart_entry_climb(
+                self, symbol, OrderSide.SELL, quantity, max_wait_s, steps,
+                allow_market_fallback, poll_interval_s, outside_rth=True,
+            )
         return self._smart_midprice(symbol, OrderSide.SELL, quantity,
                                     max_wait_s, allow_market_fallback, poll_interval_s)
 

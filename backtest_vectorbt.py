@@ -56,6 +56,27 @@ class TradingSimulator:
         beta = returns_df["equity"].cov(returns_df["asset"]) / asset_variance
         return 0.0 if pd.isna(beta) else float(beta)
 
+    def _subset_data(self, data_dict, symbol):
+        """
+        Ne garde que les series utiles a la simulation de `symbol`.
+
+        Evite de pickler tout data_dict vers chaque worker du
+        ProcessPoolExecutor (N symboles x N DataFrames sinon). Les symboles
+        annexes sont lus sur la strategie via les attributs conventionnels
+        `lead_symbol` / `reference_symbol` ; une strategie qui a besoin
+        d'autres series peut exposer `required_symbols(symbol) -> iterable`.
+        """
+        required = getattr(self.strategy, "required_symbols", None)
+        if callable(required):
+            needed = {symbol, *required(symbol)}
+        else:
+            needed = {symbol}
+            for attr in ("lead_symbol", "reference_symbol"):
+                extra = getattr(self.strategy, attr, None)
+                if extra:
+                    needed.add(extra)
+        return {s: df for s, df in data_dict.items() if s in needed}
+
     def _resolve_params(self, params):
         if params is not None:
             return params
@@ -147,7 +168,13 @@ class TradingSimulator:
         portfolios_data = {}
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(self.run_simulation, symbol=symbol, data_dict=data_dict, params=params, reload=reload): symbol
+                executor.submit(
+                    self.run_simulation,
+                    symbol=symbol,
+                    data_dict=self._subset_data(data_dict, symbol),
+                    params=params,
+                    reload=reload,
+                ): symbol
                 for symbol in symbols
             }
             for future in concurrent.futures.as_completed(futures):

@@ -30,8 +30,14 @@ class Broker(ABC):
         order_type: OrderType = OrderType.MARKET,
         price: Optional[float] = None,
         client_order_id: Optional[str] = None,
+        outside_rth: bool = False,
     ) -> Order:
-        """Place un ordre. Pour LIMIT, `price` est obligatoire."""
+        """Place un ordre. Pour LIMIT, `price` est obligatoire.
+
+        `outside_rth=True` autorise l'execution hors RTH (pre/after market).
+        Seul IBKR utilise reellement ce flag (set sur l'attribut
+        ib_insync.Order.outsideRth). Binance (crypto 24/7) et Saxo l'ignorent.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -82,6 +88,7 @@ class Broker(ABC):
         steps: int = 3,
         allow_market_fallback: bool = True,
         poll_interval_s: float = 0.5,
+        outside_rth: bool = False,
     ) -> Order:
         """
         Achat au meilleur prix possible en au plus `max_wait_s` secondes.
@@ -92,12 +99,13 @@ class Broker(ABC):
           3) A chaque palier, attend `max_wait_s / steps` secondes en pollant
           4) Cancel si pas rempli, repart sur la quantite restante au palier suivant
           5) Au dernier palier, optionnellement bascule en MARKET pour garantir le fill
+             (LIMIT @ ask+0.5%% si `outside_rth=True`, IBKR refusant MARKET hors RTH)
 
-        Les brokers peuvent override (ex: IBKR utilise MIDPRICE natif).
+        Les brokers peuvent override (ex: IBKR utilise MIDPRICE natif si en RTH).
         """
         return self._smart_entry_climb(
             symbol, OrderSide.BUY, quantity, max_wait_s, steps,
-            allow_market_fallback, poll_interval_s,
+            allow_market_fallback, poll_interval_s, outside_rth,
         )
 
     def smart_sell(
@@ -108,11 +116,12 @@ class Broker(ABC):
         steps: int = 3,
         allow_market_fallback: bool = True,
         poll_interval_s: float = 0.5,
+        outside_rth: bool = False,
     ) -> Order:
         """Vente au meilleur prix possible. Symetrique de `smart_buy`."""
         return self._smart_entry_climb(
             symbol, OrderSide.SELL, quantity, max_wait_s, steps,
-            allow_market_fallback, poll_interval_s,
+            allow_market_fallback, poll_interval_s, outside_rth,
         )
 
     def _smart_entry_climb(
@@ -124,6 +133,7 @@ class Broker(ABC):
         steps: int,
         allow_market_fallback: bool,
         poll_interval_s: float,
+        outside_rth: bool = False,
     ) -> Order:
         if steps < 1:
             raise InvalidOrder("steps doit etre >= 1")
@@ -149,7 +159,8 @@ class Broker(ABC):
         for price in prices:
             if remaining <= 0:
                 break
-            order = self.place_order(symbol, side, remaining, OrderType.LIMIT, price=price)
+            order = self.place_order(symbol, side, remaining, OrderType.LIMIT,
+                                     price=price, outside_rth=outside_rth)
             last_order = order
             deadline = time.monotonic() + step_time
             while time.monotonic() < deadline:
@@ -173,6 +184,13 @@ class Broker(ABC):
             remaining -= filled_round
 
         if remaining > 0 and allow_market_fallback:
+            if outside_rth:
+                # MARKET refuse hors RTH par IBKR. On utilise un LIMIT agressif
+                # cross-spread sur le quote frais : ask*1.005 (BUY) / bid*0.995 (SELL).
+                fresh = self.get_quote(symbol)
+                fb_price = fresh.ask * 1.005 if side == OrderSide.BUY else fresh.bid * 0.995
+                return self.place_order(symbol, side, remaining, OrderType.LIMIT,
+                                        price=fb_price, outside_rth=True)
             return self.place_order(symbol, side, remaining, OrderType.MARKET)
         if remaining > 0:
             raise InvalidOrder(
